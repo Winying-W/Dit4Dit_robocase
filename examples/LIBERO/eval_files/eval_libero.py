@@ -40,6 +40,7 @@ class Args:
     task_suite_name: str = "libero_goal"  # Task suite. Options: libero_spatial, libero_object, libero_goal, libero_10, libero_90
     num_steps_wait: int = 10  # Number of steps to wait for objects to stabilize i n sim
     num_trials_per_task: int = 50  # Number of rollouts per task
+    task_ids: list[int] | None = None  # None evaluates the entire suite.
 
     #################################################################################################################
     # Utils
@@ -65,6 +66,11 @@ def eval_libero(args: Args) -> None:
     benchmark_dict = benchmark.get_benchmark_dict()
     task_suite = benchmark_dict[args.task_suite_name]()
     num_tasks_in_suite = task_suite.n_tasks
+    task_ids = list(range(num_tasks_in_suite)) if args.task_ids is None else args.task_ids
+    if not task_ids or any(i < 0 or i >= num_tasks_in_suite for i in task_ids):
+        raise ValueError(f"task_ids must be in [0, {num_tasks_in_suite})")
+    if args.num_trials_per_task < 1:
+        raise ValueError("num_trials_per_task must be positive")
     logging.info(f"Task suite: {args.task_suite_name}")
 
     # args.video_out_path = f"{date_base}+{args.job_name}"
@@ -94,12 +100,15 @@ def eval_libero(args: Args) -> None:
 
     # Start evaluation
     total_episodes, total_successes = 0, 0
-    for task_id in tqdm.tqdm(range(num_tasks_in_suite)):
+    episode_results = []
+    for task_id in tqdm.tqdm(task_ids):
         # Get task
         task = task_suite.get_task(task_id)
 
         # Get default LIBERO initial states
         initial_states = task_suite.get_task_init_states(task_id)
+        if args.num_trials_per_task > len(initial_states):
+            raise ValueError("Requested more trials than available initial states")
 
         # Initialize LIBERO environment and task description
         env, task_description = _get_libero_env(task, LIBERO_ENV_RESOLUTION, args.seed)
@@ -215,6 +224,11 @@ def eval_libero(args: Args) -> None:
 
             task_episodes += 1
             total_episodes += 1
+            episode_results.append({
+                "task_id": task_id, "task": task_description,
+                "episode": episode_idx, "success": bool(done),
+                "policy_steps": len(full_actions),
+            })
 
             # Save a replay video of the episode
             suffix = "success" if done else "failure"
@@ -243,6 +257,15 @@ def eval_libero(args: Args) -> None:
         )
         logging.info(
             f"Current total success rate: {float(total_successes) / float(total_episodes)}"
+        )
+        env.close()
+        summary = {
+            "args": dataclasses.asdict(args), "episodes": episode_results,
+            "total_episodes": total_episodes, "total_successes": total_successes,
+            "success_rate": total_successes / total_episodes,
+        }
+        (pathlib.Path(args.video_out_path) / "summary.json").write_text(
+            json.dumps(summary, indent=2) + "\n"
         )
 
     logging.info(

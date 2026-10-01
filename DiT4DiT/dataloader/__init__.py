@@ -34,6 +34,16 @@ def save_dataset_statistics(dataset_statistics, run_dir):
 
 def build_dataloader(cfg, dataset_py="lerobot_datasets_oxe"):
 
+    if dataset_py == "robocasa365_datasets":
+        from DiT4DiT.dataloader.robocasa365_datasets import get_vla_dataset, collate_fn
+        data_cfg = cfg.datasets.vla_data
+        return DataLoader(
+            get_vla_dataset(data_cfg),
+            batch_size=data_cfg.get("per_device_batch_size", 1),
+            collate_fn=collate_fn,
+            num_workers=data_cfg.get("num_workers", 0),
+        )
+
     if dataset_py == "lerobot_datasets":
         from DiT4DiT.dataloader.lerobot_datasets import get_vla_dataset, collate_fn
         vla_dataset_cfg = cfg.datasets.vla_data

@@ -1,0 +1,82 @@
+{
+  "url": "https://api.github.com/repos/robocasa/robocasa/issues/209",
+  "repository_url": "https://api.github.com/repos/robocasa/robocasa",
+  "labels_url": "https://api.github.com/repos/robocasa/robocasa/issues/209/labels{/name}",
+  "comments_url": "https://api.github.com/repos/robocasa/robocasa/issues/209/comments",
+  "events_url": "https://api.github.com/repos/robocasa/robocasa/issues/209/events",
+  "html_url": "https://github.com/robocasa/robocasa/issues/209",
+  "id": 4809964552,
+  "node_id": "I_kwDOL6JjXs8AAAABHrI8CA",
+  "number": 209,
+  "title": "Robocasa demonstrations don't always succeed. ",
+  "user": {
+    "login": "velezbeltran",
+    "id": 61052993,
+    "node_id": "MDQ6VXNlcjYxMDUyOTkz",
+    "avatar_url": "https://avatars.githubusercontent.com/u/61052993?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/velezbeltran",
+    "html_url": "https://github.com/velezbeltran",
+    "followers_url": "https://api.github.com/users/velezbeltran/followers",
+    "following_url": "https://api.github.com/users/velezbeltran/following{/other_user}",
+    "gists_url": "https://api.github.com/users/velezbeltran/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/velezbeltran/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/velezbeltran/subscriptions",
+    "organizations_url": "https://api.github.com/users/velezbeltran/orgs",
+    "repos_url": "https://api.github.com/users/velezbeltran/repos",
+    "events_url": "https://api.github.com/users/velezbeltran/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/velezbeltran/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "labels": [
+
+  ],
+  "state": "open",
+  "locked": false,
+  "assignees": [
+
+  ],
+  "milestone": null,
+  "comments": 7,
+  "created_at": "2026-07-04T17:40:46Z",
+  "updated_at": "2026-09-19T17:33:24Z",
+  "closed_at": null,
+  "assignee": null,
+  "author_association": "NONE",
+  "issue_field_values": [
+
+  ],
+  "type": null,
+  "active_lock_reason": null,
+  "sub_issues_summary": {
+    "total": 0,
+    "completed": 0,
+    "percent_completed": 0
+  },
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "body": "Hello!\n\nThank for this project it is very cool and super useful. \n\nI have been trying to verify that the Robocasa provided demonstrations work by replaying them in the simulator but it seems that this is unfortunately not the case. I was wondering how to fix them. \n\nIt seems that there are two distinct issues. \n\n1. For some environments replaying the state in mujoco works. However, it seems that the check for success is not really correct. \n2. For some environments replaying the actions in the simulator doesn't lead to success (although replaying the states works so it seems to do more with the actions themselves). \n\nI choose 50 episodes at random for the 18 atomic tasks and ended up getting a success rate of 86%ish given these issues. \n\nIt would also be helpful if you let us know what packages are used for the benchmarks or if there are any gotchas we should keep in mind.\n\nHere are some more details I extracted with claude including our environment version and some things I tried as well as a minimal reproduction script. [further_details.md](https://github.com/user-attachments/files/29663434/GITHUB_ISSUE_DRAFT.1.md). \n\nLet me know if I can clarify or help with anything. \n\nThank you in advance!\n\n\n\n\n\n",
+  "closed_by": null,
+  "reactions": {
+    "url": "https://api.github.com/repos/robocasa/robocasa/issues/209/reactions",
+    "total_count": 0,
+    "+1": 0,
+    "-1": 0,
+    "laugh": 0,
+    "hooray": 0,
+    "confused": 0,
+    "heart": 0,
+    "rocket": 0,
+    "eyes": 0
+  },
+  "timeline_url": "https://api.github.com/repos/robocasa/robocasa/issues/209/timeline",
+  "performed_via_github_app": null,
+  "state_reason": null,
+  "pinned_comment": null
+}

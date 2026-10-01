@@ -1,0 +1,53 @@
+TaskName: dit4dit-robo365-atomic-cabinet-10k-20260924
+Description: One A800. Atomic PickPlaceCounterToCabinet diagnostic from released GR1,
+  all target train demos, 10000 updates. 20 development seeds at 2000/5000; 100 separate
+  final fresh seeds. Full12D action, official horizon750. Outputs on vePFS.
+Entrypoint: bash /file_system/vepfs/intern/haozhe.jia/projects/DiT4DiT/runs/robocasa365_atomic_20260924/source/scripts/volc/entrypoint_robocasa365_atomic.sh
+Tags: []
+UserCodePath: ''
+RemoteMountCodePath: ''
+Envs: []
+ResourceQueueID: q-20260629215336-k8k4r
+Framework: PyTorchDDP
+TaskRoleSpecs:
+- RoleName: worker
+  RoleReplicas: 1
+  Flavor: custom
+  ResourceSpec:
+    Family: ml.pni2l
+    CPU: 8
+    Memory: 128
+    GPUNum: 1
+ActiveDeadlineSeconds: 86400
+EnableTensorBoard: false
+Storages:
+- Type: Vepfs
+  MountPath: /file_system/vepfs/intern/haozhe.jia
+  VepfsId: vepfs-cnbjc105827ad474
+  SubPath: intern/haozhe.jia
+  ReadOnly: false
+- Type: VolcEfs
+  MountPath: /file_system/efs
+  VolcEfsId: efs-cnbjc5ac4cec04b91
+  VolcEfsAccessPointId: ap-f62f650a
+  SubPath: ''
+  ReadOnly: true
+ImageUrl: vemlp-cn-beijing.cr.volces.com/preset-images/pytorch:2.12.0-cu13.0.3-py3.12-ubuntu24.04
+CacheType: Cloudfs
+RetryOptions:
+  EnableRetry: false
+  MaxRetryTimes: 0
+  IntervalSeconds: 120
+  PolicySets: []
+  EnableReserveResourceOnRetry: false
+DiagOptions:
+- Name: EnvironmentalDiagnosis
+  Enable: false
+- Name: PythonDetection
+  Enable: false
+- Name: LogDetection
+  Enable: false
+- Name: VecclHangDetection
+  Enable: false
+Priority: 4
+AccessType: Private

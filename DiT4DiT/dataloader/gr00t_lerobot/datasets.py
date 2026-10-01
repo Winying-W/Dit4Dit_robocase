@@ -363,13 +363,16 @@ class LeRobotSingleDataset(Dataset):
             }
 
         # 2. Dataset statistics
-        stats_path = self.dataset_path / LE_ROBOT_STATS_FILENAME
+        explicit_stats = self.data_cfg.get("statistics_path") if self.data_cfg is not None else None
+        stats_path = Path(explicit_stats) if explicit_stats else self.dataset_path / LE_ROBOT_STATS_FILENAME
         try:
             with open(stats_path, "r") as f:
                 le_statistics = json.load(f)
             for stat in le_statistics.values():
                 DatasetStatisticalValues.model_validate(stat)
         except (FileNotFoundError, ValidationError) as e:
+            if explicit_stats:
+                raise ValueError(f"Explicit training statistics are missing or invalid: {stats_path}") from e
             print(f"Failed to load dataset statistics: {e}")
             print(f"Calculating dataset statistics for {self.dataset_name}")
             # Get all parquet files in the dataset paths

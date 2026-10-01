@@ -1,0 +1,51 @@
+TaskName: dit4dit-robo365-recovered-50k-20260924
+Description: 'One A800. New released-GR1 initialization, 7271 demos from all 16 Composite seen tasks, 50000 updates. Development at 15000 on separate seeds; final 16x100 policy trials. Outputs on vePFS, no original NAS dependency.'
+Entrypoint: bash /file_system/vepfs/intern/haozhe.jia/projects/DiT4DiT/runs/robocasa365_recovered_20260924/source/scripts/volc/entrypoint_robocasa365_recovered.sh
+Tags: []
+UserCodePath: ''
+RemoteMountCodePath: ''
+Envs: []
+ResourceQueueID: q-20260629215336-k8k4r
+Framework: PyTorchDDP
+TaskRoleSpecs:
+- RoleName: worker
+  RoleReplicas: 1
+  Flavor: custom
+  ResourceSpec:
+    Family: ml.pni2l
+    CPU: 8
+    Memory: 128
+    GPUNum: 1
+ActiveDeadlineSeconds: 345600
+EnableTensorBoard: false
+Storages:
+- Type: Vepfs
+  MountPath: /file_system/vepfs/intern/haozhe.jia
+  VepfsId: vepfs-cnbjc105827ad474
+  SubPath: intern/haozhe.jia
+  ReadOnly: false
+- Type: VolcEfs
+  MountPath: /file_system/efs
+  VolcEfsId: efs-cnbjc5ac4cec04b91
+  VolcEfsAccessPointId: ap-f62f650a
+  SubPath: ''
+  ReadOnly: true
+ImageUrl: vemlp-cn-beijing.cr.volces.com/preset-images/pytorch:2.12.0-cu13.0.3-py3.12-ubuntu24.04
+CacheType: Cloudfs
+RetryOptions:
+  EnableRetry: false
+  MaxRetryTimes: 0
+  IntervalSeconds: 120
+  PolicySets: []
+  EnableReserveResourceOnRetry: false
+DiagOptions:
+- Name: EnvironmentalDiagnosis
+  Enable: false
+- Name: PythonDetection
+  Enable: false
+- Name: LogDetection
+  Enable: false
+- Name: VecclHangDetection
+  Enable: false
+Priority: 4
+AccessType: Private

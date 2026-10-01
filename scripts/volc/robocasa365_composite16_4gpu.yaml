@@ -1,0 +1,53 @@
+TaskName: dit4dit-robo365-composite16-50k-4gpu-20260927
+Description: Four A800 DDP. All16 Composite seen tasks:7271 train/806 validation demos.
+  Global batch64,50000 updates. Development16x20 at10k/25k; final16x100 fresh trials.
+  stable_counter_v1 scene protocol. All16 render gate and allocated-GPU gates mandatory.
+Entrypoint: bash /file_system/vepfs/intern/haozhe.jia/projects/DiT4DiT/runs/robocasa365_composite16_4gpu_20260927/source/scripts/volc/entrypoint_robocasa365_composite16_4gpu.sh
+Tags: []
+UserCodePath: ''
+RemoteMountCodePath: ''
+Envs: []
+ResourceQueueID: q-20260629215336-k8k4r
+Framework: PyTorchDDP
+TaskRoleSpecs:
+- RoleName: worker
+  RoleReplicas: 1
+  Flavor: custom
+  ResourceSpec:
+    Family: ml.pni2l
+    CPU: 32
+    Memory: 512
+    GPUNum: 4
+ActiveDeadlineSeconds: 604800
+EnableTensorBoard: false
+Storages:
+- Type: Vepfs
+  MountPath: /file_system/vepfs/intern/haozhe.jia
+  VepfsId: vepfs-cnbjc105827ad474
+  SubPath: intern/haozhe.jia
+  ReadOnly: false
+- Type: VolcEfs
+  MountPath: /file_system/efs
+  VolcEfsId: efs-cnbjc5ac4cec04b91
+  VolcEfsAccessPointId: ap-f62f650a
+  SubPath: ''
+  ReadOnly: true
+ImageUrl: vemlp-cn-beijing.cr.volces.com/preset-images/pytorch:2.12.0-cu13.0.3-py3.12-ubuntu24.04
+CacheType: Cloudfs
+RetryOptions:
+  EnableRetry: false
+  MaxRetryTimes: 0
+  IntervalSeconds: 120
+  PolicySets: []
+  EnableReserveResourceOnRetry: false
+DiagOptions:
+- Name: EnvironmentalDiagnosis
+  Enable: false
+- Name: PythonDetection
+  Enable: false
+- Name: LogDetection
+  Enable: false
+- Name: VecclHangDetection
+  Enable: false
+Priority: 4
+AccessType: Private

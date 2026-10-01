@@ -1,0 +1,26 @@
+.venv
+.venv-*
+.cache
+checkpoints
+logs
+results
+third_party
+__pycache__/
+*.py[cod]
+*.egg-info/
+.conda
+
+.sim-gr1
+
+/data/
+/artifacts/
+
+# Local experiment outputs and credentials
+/runs/
+/MUJOCO_LOG.TXT
+.env
+.env.*
+!.env.example
+.aws/
+.volc/
+*.pem

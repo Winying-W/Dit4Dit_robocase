@@ -1,0 +1,51 @@
+TaskName: dit4dit-robocasa-gr1-eval-24x50
+Description: Official released GR1 checkpoint, 24 tasks x 50 episodes, horizon 720,
+  action chunk 12. Local preflight required before submission.
+Entrypoint: bash /file_system/vepfs/intern/haozhe.jia/projects/DiT4DiT/scripts/volc/entrypoint_gr1.sh
+Tags: []
+UserCodePath: ''
+RemoteMountCodePath: ''
+Envs: []
+ResourceQueueID: q-20260629215336-k8k4r
+Framework: PyTorchDDP
+TaskRoleSpecs:
+- RoleName: worker
+  RoleReplicas: 1
+  Flavor: custom
+  ResourceSpec:
+    Family: ml.pni2l
+    CPU: 64
+    Memory: 512
+    GPUNum: 8
+ActiveDeadlineSeconds: 86400
+EnableTensorBoard: false
+Storages:
+- Type: Vepfs
+  MountPath: /file_system/vepfs/intern/haozhe.jia
+  VepfsId: vepfs-cnbjc105827ad474
+  SubPath: intern/haozhe.jia
+  ReadOnly: false
+- Type: Nas
+  MountPath: /file_system/nas
+  NasId: enas-cnbja0e9f52c6189a9
+  NasAddr: cnbja0e9f52c6189a9.vpc-bu2zjepnfg8w5h0b2u0jnd2e.nas.ivolces.com:/enas-cnbja0e9f52c6189a9
+  SubPath: ''
+ImageUrl: vemlp-cn-beijing.cr.volces.com/preset-images/pytorch:2.12.0-cu13.0.3-py3.12-ubuntu24.04
+CacheType: Cloudfs
+RetryOptions:
+  EnableRetry: false
+  MaxRetryTimes: 5
+  IntervalSeconds: 120
+  PolicySets: []
+  EnableReserveResourceOnRetry: false
+DiagOptions:
+- Name: EnvironmentalDiagnosis
+  Enable: false
+- Name: PythonDetection
+  Enable: false
+- Name: LogDetection
+  Enable: false
+- Name: VecclHangDetection
+  Enable: false
+Priority: 4
+AccessType: Private

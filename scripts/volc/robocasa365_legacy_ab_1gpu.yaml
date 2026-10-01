@@ -1,0 +1,53 @@
+# Draft: original checkpoint and complete prequeue acceptance are still required.
+# Do not submit while Atomic18 or Composite16 occupies the authorized four GPUs.
+TaskName: dit4dit-robo365-legacy-ab-20260924
+Description: Original16-demo StirVegetables step2000 paired frozen versus partial-video comparison; 1GPU sequential arms, 1000 added updates each, paired10 fresh development trials per arm.
+Entrypoint: bash /file_system/vepfs/intern/haozhe.jia/projects/DiT4DiT/runs/robocasa365_legacy_ab_20260924/source/scripts/volc/entrypoint_robocasa365_legacy_ab.sh
+Tags: []
+UserCodePath: ''
+RemoteMountCodePath: ''
+Envs: []
+ResourceQueueID: q-20260629215336-k8k4r
+Framework: PyTorchDDP
+TaskRoleSpecs:
+- RoleName: worker
+  RoleReplicas: 1
+  Flavor: custom
+  ResourceSpec:
+    Family: ml.pni2l
+    CPU: 8
+    Memory: 128
+    GPUNum: 1
+ActiveDeadlineSeconds: 86400
+EnableTensorBoard: false
+Storages:
+- Type: Vepfs
+  MountPath: /file_system/vepfs/intern/haozhe.jia
+  VepfsId: vepfs-cnbjc105827ad474
+  SubPath: intern/haozhe.jia
+  ReadOnly: false
+- Type: VolcEfs
+  MountPath: /file_system/efs
+  VolcEfsId: efs-cnbjc5ac4cec04b91
+  VolcEfsAccessPointId: ap-f62f650a
+  SubPath: ''
+  ReadOnly: true
+ImageUrl: vemlp-cn-beijing.cr.volces.com/preset-images/pytorch:2.12.0-cu13.0.3-py3.12-ubuntu24.04
+CacheType: Cloudfs
+RetryOptions:
+  EnableRetry: false
+  MaxRetryTimes: 0
+  IntervalSeconds: 120
+  PolicySets: []
+  EnableReserveResourceOnRetry: false
+DiagOptions:
+- Name: EnvironmentalDiagnosis
+  Enable: false
+- Name: PythonDetection
+  Enable: false
+- Name: LogDetection
+  Enable: false
+- Name: VecclHangDetection
+  Enable: false
+Priority: 4
+AccessType: Private

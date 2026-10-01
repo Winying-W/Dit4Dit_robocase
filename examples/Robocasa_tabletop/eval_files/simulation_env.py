@@ -187,10 +187,10 @@ class SimulationInferenceEnv:
         return actions
 
 
-def _create_single_env(config: SimulationConfig, idx: int) -> gym.Env:
+def _create_single_env(config: SimulationConfig, idx: int, seed: Optional[int] = None) -> gym.Env:
     """Create a single environment with appropriate wrappers."""
     # Create base environment
-    env = gym.make(config.env_name, enable_render=True)
+    env = gym.make(config.env_name, enable_render=True, seed=seed)
     # Add video recording wrapper if needed (only for the first environment)
     if config.video.video_dir is not None:
         video_recorder = VideoRecorder.create_h264(

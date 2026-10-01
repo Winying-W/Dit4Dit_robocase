@@ -1,0 +1,3742 @@
+DiT4DiT: Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control
+// Restore the saved color scheme preference, or
+  // enact the browser preference if "automatic", 
+  // without expecting DOM load to have completed.
+  //
+  // Also restore any saved readingmode and ToC display preferences.
+  function initializeReadingPreferences() {
+    let saved_theme = localStorage.getItem("ar5iv_theme") || "automatic";
+    if (saved_theme === "automatic") {
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        saved_theme = "dark";
+      }
+    }
+    if (saved_theme == "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+    } else {
+      document.documentElement.setAttribute("data-theme", "light");
+    }
+
+    const tocDisplay = localStorage.getItem('arxiv_html_paper_toc_display');
+    if (tocDisplay) {
+      document.documentElement.setAttribute("data-toc-display", tocDisplay);
+    }
+    const readingMode = localStorage.getItem('arxiv_html_paper_reading_mode');
+    if (readingMode) {
+      document.documentElement.setAttribute("data-reading-mode", readingMode);
+    }
+    // Pre-apply spinout-banner dismissal here, before the banner paints, so it
+    // never flashes in only to be hidden later by the deferred arxiv-header.js.
+    // Key matches arxiv-header.js: "arxiv-banner-dismissed:" + data-banner-name.
+    if (localStorage.getItem('arxiv-banner-dismissed:spinout-nonprofit')) {
+      document.documentElement.setAttribute("data-banner-dismissed", "");
+    }
+  }
+  // Run as soon as JS starts, to minimize repainting
+  initializeReadingPreferences();
+/* Banner pre-dismissal (set above before paint -> no flash-then-hide) and
+     reading-mode chrome hiding. */
+  html[data-banner-dismissed] .ds-announcement { display: none; }
+  html[data-reading-mode="enabled"] .ds-announcement,
+  html[data-reading-mode="enabled"] .ds-site-footer { display: none; }
+  /* Keep the announcement text dark on the Open-Blue band in both colour themes
+     (otherwise it inherits the paper's warm-wash text in dark mode and washes out). */
+  .ds-announcement-text { color: var(--arxiv-ink, #1c1a17); }
+Report GitHub Issue
+×
+Title:
+Content selection saved. Describe the issue below:
+Description:
+Submit without GitHub
+Submit in GitHub
+arXiv is now an independent nonprofit!
+Learn more
+×
+Back to arXiv
+Why HTML?
+Report Issue
+Back to Abstract
+Download PDF
+Abstract
+1
+Introduction
+2
+Related Works
+2.1
+Vision-Language-Action Models
+2.2
+Video Generation in Robotics
+3
+Validation of Video Generation as a Scaling Proxy
+4
+DiT4DiT: Unleashing the Potential of Video Model
+4.1
+Preliminaries
+4.2
+Dual-DiT Architecture
+4.3
+Joint Training of Video and Action
+4.4
+Inference
+5
+Experiments
+5.1
+Experiment Setup
+5.2
+Comparison against State-of-the-art Policies
+5.3
+Generalization Capability
+5.4
+Ablations
+5.5
+Efficiency Analysis
+6
+Conclusion
+References
+A
+Appendix
+A.1
+Model & Training Configurations
+A.2
+Dataset Configuration
+A.3
+Real-world Experiment Setting
+A.4
+Limitations and Discussion
+License: CC BY 4.0
+arXiv:2603.10448v2 [cs.RO] 22 Mar 2026
+DiT4DiT: Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control
+Teli Ma
+Affiliation:
+Mondo Robotics
+Affiliation:
+HKUST(GZ)
+Jia Zheng
+Affiliation:
+Mondo Robotics
+Affiliation:
+HKUST(GZ)
+Zifan Wang
+Affiliation:
+Mondo Robotics
+Affiliation:
+HKUST(GZ)
+Chunli Jiang
+Affiliation:
+Mondo Robotics
+Andy Cui
+Affiliation:
+Mondo Robotics
+Junwei Liang
+Affiliation:
+HKUST(GZ)
+Affiliation:
+HKUST
+*
+Corresponding author, Co-advising
+Shuo Yang
+Affiliation:
+Mondo Robotics
+Abstract
+Vision-Language-Action (VLA) models have emerged as a promising paradigm for robot learning, but their representations are still largely inherited from static image-text pretraining, leaving physical dynamics to be learned from comparatively limited action data. Generative video models, by contrast, encode rich spatiotemporal structure and implicit physics, making them a compelling foundation for robotic manipulation. But their potentials are not fully explored in the literature. To bridge the gap, we introduce DiT4DiT, an end-to-end Video-Action Model that couples a video Diffusion Transformer with an action Diffusion Transformer in a unified cascaded framework. Instead of relying on reconstructed future frames, DiT4DiT extracts intermediate denoising features from the video generation process and uses them as temporally grounded conditions for action prediction. We further propose a dual flow-matching objective with decoupled timesteps and noise scales for video prediction, hidden-state extraction, and action inference, enabling coherent joint training of both modules. Across simulation and real-world benchmarks, DiT4DiT achieves state-of-the-art results, reaching average success rates of 98.6% on LIBERO and 50.8% on RoboCasa GR1 while using substantially less training data. On the Unitree G1 robot, it also delivers superior real-world performance and strong zero-shot generalization. Importantly, DiT4DiT improves sample efficiency by over 10
+×
+\times
+and speeds up convergence by up to 7
+×
+\times
+, demonstrating that video generation can serve as an effective scaling proxy for robot policy learning. We release code and models at
+https://dit4dit.github.io/
+.
+1
+Introduction
+Vision-Language-Action (VLA) models
+(
+Brohan et al., 2023b
+;
+Brohan et al., 2023a
+;
+Kim et al., 2024
+;
+Black et al., 2024
+;
+Intelligence et al., 2025a
+;
+Bjorck et al., 2025
+;
+NVIDIA et al., 2025b
+)
+, built upon the success of Vision-Language Models (VLMs)
+(
+Achiam et al., 2023
+;
+Touvron et al., 2023
+;
+Karamcheti et al., 2024
+;
+Bai et al., 2025
+)
+, have demonstrated remarkable capabilities across a wide range of robotic tasks. Yet most existing VLA systems inherit backbones pretrained primarily on static image-text data, leaving spatiotemporal structure and physical dynamics to be learned only during downstream policy training.
+In parallel, video generation models (VGMs)
+(
+Wan et al., 2025
+;
+NVIDIA et al., 2025a
+;
+Ali et al., 2025
+;
+Cai et al., 2025
+)
+have emerged as a promising alternative: by synthesizing temporally coherent and physically plausible futures video frames, they learn rich motion priors, causal structure, and implicit physical dynamics. This suggests a broader opportunity for robotics: beyond serving as auxiliary models, video generators may provide a strong foundation model backbone for robot control.
+Figure 1:
+Proxy objectives for scalable robot policy learning.
+Left:
+Comparison of three representative training paradigms:
+Grounding
+(object-level semantic alignment),
+FLARE-style
+(
+Zheng et al., 2025
+)
+latent modeling (VLM-to-future-frame feature prediction), and
+Video generation
+(learning physically plausible future dynamics).
+Right:
+Video generation serves as the strongest scaling proxy, yielding higher sample efficiency (up to
+>
+10
+×
+>10\times
+), faster convergence (up to
+7
+×
+7\times
+), and more favorable scaling trends across data regimes, with consistently better downstream manipulation success than semantic-centric baselines. All results are reported as the average success rate over 24 tasks in the RoboCasa-GR1 tabletop benchmark
+(
+Nasiriany et al., 2024
+;
+Bjorck et al., 2025
+)
+.
+Recent works
+(
+Unitree, 2025
+;
+Liang et al., 2025
+;
+Feng et al., 2025
+;
+Liao et al., 2025
+;
+Wang et al., 2025
+;
+Li et al., 2025a
+;
+Bi et al., 2025
+;
+Kim et al., 2026
+;
+Pai et al., 2025
+)
+have begun exploring this direction, typically by using video models to synthesize additional training data or by extracting latent representations to train inverse dynamics models for action prediction. While encouraging, these approaches are often multi-stage rather than end-to-end, making control indirect and leaving open the central question of how video generative models should be integrated to serve as a principled backbone for policy learning. In this work, we take a step toward that goal by answering two questions: (1) can video generation itself serve as an effective training objective for robust action policies? and (2) how should the spatiotemporal representations learned by video models be extracted and coupled with action generation?
+We first examine whether video generation can serve as an effective proxy objective for policy learning. The strong dependence on action-labeled data has long constrained the scaling of VLA models.
+Prior attempts to leverage visual supervision through auxiliary tasks (e.g., grounding and VLM-centric latent feature modeling) are often sample-inefficient. For instance, methods like FLARE
+(
+Zheng et al., 2025
+)
+attempt to align current-future representations with pre-trained VLMs, but struggle to capture continuous pixel-level physical dynamics. In contrast, we find that video generation is a highly effective unsupervised pre-training signal. As shown in Fig.
+1
+, our video-dynamics objective converges faster and achieves higher final success rates than both
+Grounding
+and
+FLARE-style
+baselines.
+To this end, we introduce DiT4DiT, a unified end-to-end Video-Action Model (VAM) with a
+dual-DiT
+architecture. Unlike prior methods built on visual-language autoregressive backbones, our framework adopts a bidirectional Video Diffusion Transformer (DiT)
+(
+Peebles and Xie, 2023
+)
+. During denoising, we extract compact latent features from future-frame generation and use them to condition action learning, so the policy is grounded in the generative visual dynamics that govern physical interaction.
+To avoid disjoint multi-stage optimization, we further propose a unified joint-training paradigm based on
+dual flow-matching
+, which optimizes video and action generation in one framework. The method assigns separate timesteps and noise scales to the two modules, enabling either independent or coupled updates while transferring denoised multi-stage video latents into the action latent space. This design streamlines the training workflow and significantly shortens the convergence cycle.
+We evaluate our method extensively across both simulation and real-world settings to demonstrate its efficacy in translating generative physical priors into precise robotic control. As an end-to-end policy, DiT4DiT achieves a new state-of-the-art on both the LIBERO
+(
+Liu et al., 2024
+)
+and RoboCasa-GR1
+(
+Nasiriany et al., 2024
+)
+Tabletop simulation benchmarks (98.6% and 50.8% average success rates, respectively). It demonstrates exceptional extended-horizon capabilities on LIBERO, outperforming recent strong VLA models like
+π
+0.5
+\pi_{0.5}
+(
+Intelligence et al., 2025b
+)
+and CogVLA
+(
+Li et al., 2025b
+)
+. On the challenging 24-task RoboCasa-GR1 suite, it decisively surpasses highly optimized, pre-trained policies like the GR00T series
+(
+Bjorck et al., 2025
+;
+NVIDIA et al., 2025b
+)
+by substantial margins.
+In real-world Unitree G1 deployments, DiT4DiT maintains clear advantages over both pre-trained (GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+) and parameter-matched baselines. Remarkably, relying on only a single egocentric camera, our framework extracts rich spatial reasoning capabilities, achieving the high accuracy required for precision-critical tasks such as
+Arrange Flower
+and
+Stack Cup
+. Furthermore, DiT4DiT exhibits robust zero-shot generalization under severe distribution shifts, successfully adapting to unseen objects, category changes, and quantity variations in both simulation and physical reality.
+2
+Related Works
+This work connects advances in generalist robot policies with recent progress in generative world modeling. We therefore review two complementary lines of research: Visual-language-based models and video-generation-based models.
+2.1
+Vision-Language-Action Models
+The emergence of Vision-Language-Action (VLA) models has established a transformative paradigm for generalist robot learning. By co-fine-tuning VLMs on robotic trajectories, models such as RT-2
+(
+Brohan et al., 2023a
+)
+, OpenVLA
+(
+Kim et al., 2024
+)
+, UniVLA
+(
+Bu et al., 2025
+)
+, CogVLA
+(
+Li et al., 2025b
+)
+, GR00T
+(
+Bjorck et al., 2025
+;
+NVIDIA et al., 2025b
+)
+and the
+π
+\pi
+(
+Black et al., 2024
+;
+Intelligence et al., 2025b
+)
+family successfully transfer semantic priors to embodied control. By inheriting the extensive visual and linguistic representations of their backbones, these policies demonstrate remarkable zero-shot generalization to novel instructions and semantic concepts that are otherwise absent from standard robotic datasets.
+Despite their impressive semantic proficiency, a critical limitation of current VLAs stems from their foundational architecture: they rely on representations learned almost exclusively from static image-text pairs.
+Consequently, the heavy burden of learning low-level physical interactions and temporal state transitions falls entirely on the downstream robotic fine-tuning phase, which requires thousands of hours of training data.
+In contrast to these static VLA paradigms, our approach is built upon a pre-trained video diffusion model. Having been optimized to predict future frames across internet-scale video datasets, video generative models
+(
+Kong et al., 2024
+;
+Zheng et al., 2024
+;
+Ali et al., 2025
+;
+NVIDIA et al., 2025a
+;
+Wan et al., 2025
+)
+naturally internalize the complex, continuous physical dynamics of the real world. We hypothesize that harnessing these rich, pre-existing spatiotemporal and physical priors offers a fundamentally superior foundation for learning robust, low-level robotic control policies.
+2.2
+Video Generation in Robotics
+To overcome the physical blindness of static VLMs, recent research has increasingly turned to generative video models, which naturally encapsulate rich spatiotemporal priors and complex physical dynamics
+(
+Hu et al., 2024
+;
+Ye et al., 2024
+;
+Liang et al., 2025
+;
+Feng et al., 2025
+;
+Liao et al., 2025
+;
+Wang et al., 2025
+;
+Zhong et al., 2025
+;
+Cen et al., 2025
+;
+Feng et al., 2025
+;
+Bi et al., 2025
+;
+Li et al., 2026
+)
+. Historically, video prediction in robotics was primarily utilized for visual foresight, enabling model-based planning by “imagining” future states
+(
+Finn and Levine, 2017
+;
+Ebert et al., 2018
+;
+Yang et al., 2023
+;
+Du et al., 2023
+)
+.
+However, with the advent of high-fidelity diffusion transformers, a new frontier has emerged that directly integrates video generation into policy learning.
+A recent line of work
+(
+Shen et al., 2025
+;
+Li et al., 2025a
+;
+Bi et al., 2025
+;
+Li et al., 2026
+)
+has explored projecting both visual dynamics and control signals into a shared latent space.
+These models effectively consolidate versatile capabilities (such as forward simulation and inverse dynamics) into a single learned system. Building upon this trend of explicit unification, Cosmos Policy
+(
+Kim et al., 2026
+)
+further simplifies the adaptation by fine-tuning a pre-trained video diffusion model to directly output robot actions and future expected values, encoding them as contiguous latent frames within the native video diffusion process.
+The most closely related work, mimic-video
+(
+Pai et al., 2025
+)
+, pairs a pre-trained video backbone with a separate flow-matching action decoder and conditions the policy on partially denoised video latents at an intermediate flow time. In contrast, we explore
+joint training
+of video and action generation, enabling the action model to learn how to extract effective features across different stages of the video generation process, yielding more robust representations.
+3
+Validation of Video Generation as a Scaling Proxy
+A core hypothesis of this work is that video generation is an effective proxy task for robot control.
+Hence, we first test it to ensure that the design choices are grounded in empirical evidence.
+We conduct a comparative study against two paradigms.
+The first is object-level grounding as
+(
+Bjorck et al., 2025
+)
+, training the VLM with an auxiliary detection head to drive the VLM to understand ”what” and ”where” objects are for VLA.
+The other one is the implicit world modeling method based on VLM like FLARE-style. FLARE
+(
+Zheng et al., 2025
+)
+attends features from VLM with learnable queries and aligns the queries with latent embeddings of future observations. We abandon the diffusion process of the queries in FLARE to perform FLARE-like pre-training here.
+We use Qwen3-2B
+(
+Bai et al., 2025
+)
+and Cosmos-Predict2.5-2B
+(
+Ali et al., 2025
+)
+as the VLM and Video backbone to ensure that the scale of trainable parameters remains consistent.
+We validate on 24 tabletop manipulation tasks involving the GR1 humanoid robot
+(
+Nasiriany et al., 2024
+;
+Bjorck et al., 2025
+)
+in the RoboCasa simulation.
+To more effectively evaluate the efficacy of the proxy task, we decouple the pre-training phase from the downstream training of the action expert across all three experimental settings.
+The VLM and Video backbones are trained on the target dataset in a self-supervised manner (except that the grounding task uses pre-annotated bounding boxes), and then kept frozen during the fine-tuning of the action expert.
+The empirical results (see Fig.
+1
+) showcase the superiority of the video generation objective in training efficiency and scalability.
+The generative proxy task allows the model to converge to high-performance policies much faster (up to
+7
+×
+7\times
+), capturing essential manipulation cues early in the training process.
+Also, it demonstrates a robust scaling behavior: demonstrating significantly higher data efficiency (up to
+10
+×
+10\times
+) than semantic-centric based methods and maintaining a consistent performance improvement as the data volume increases.
+This validates video generation not only as an efficient training task but as a viable scaling proxy for generalizable robot control.
+4
+DiT4DiT: Unleashing the Potential of Video Model
+Figure 2:
+Overview of the proposed DiT4DiT framework.
+Top
+: Given the current observation and language goal, the video DiT predicts future dynamics and exposes intermediate generative features at the specific flow timestep; these features condition the action DiT to infer control trajectories. The two models are jointly optimized with a dual flow-matching objective for video generation and action prediction.
+Below
+: Generated visual plans via video DiT (More examples are shown in Fig.
+10
+).
+This section details DiT4DiT, an integrated Video-Action Model (VAM) designed for the joint optimization of Video and Action DiTs. By employing a dual flow-matching objective, our framework concurrently refines video synthesis and action prediction. This synergy allows the action policy to derive trajectories directly from the joint distribution, effectively grounding robotic control in the generative dynamics of the video backbone.
+4.1
+Preliminaries
+Flow matching.
+Flow Matching (FM) aims to regress a time-dependent velocity field
+v
+θ
+​
+(
+x
+,
+τ
+)
+v_{\theta}(x,\tau)
+that transports samples along a probability path between a noise distribution
+p
+1
+=
+𝒩
+⁡
+(
+0
+,
+I
+)
+p_{1}=\mathcal{N}(0,I)
+and the data distribution
+p
+0
+p_{0}
+(
+Lipman et al., 2022
+)
+. Specifically, consider a conditional probability path
+p
+τ
+​
+(
+x
+|
+x
+0
+)
+p_{\tau}(x|x_{0})
+constructed via an optimal transport displacement map. The interpolation path is defined as:
+x
+τ
+=
+(
+1
+−
+τ
+)
+⋅
+x
+0
++
+τ
+⋅
+z
+,
+τ
+∈
+[
+0
+,
+1
+]
+,
+x_{\tau}=(1-\tau)\cdot x_{0}+\tau\cdot z,\quad\tau\in[0,1],
+(1)
+where
+x
+0
+∼
+p
+data
+x_{0}\sim p_{\text{data}}
+and
+z
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+z\sim\mathcal{N}(0,I)
+. Under this formulation,
+τ
+=
+0
+\tau=0
+corresponds to the clean data point
+x
+0
+x_{0}
+, while
+τ
+=
+1
+\tau=1
+denotes pure Gaussian noise
+z
+z
+. The target velocity (ground truth flow) that generates this linear interpolation is the time derivative:
+v
+∗
+​
+(
+x
+τ
+,
+τ
+)
+=
+d
+​
+x
+τ
+d
+​
+τ
+=
+z
+−
+x
+0
+.
+v^{*}(x_{\tau},\tau)=\frac{dx_{\tau}}{d\tau}=z-x_{0}.
+(2)
+The training objective of flow matching is to minimize the expected
+L
+2
+L_{2}
+distance between the predicted velocity field
+v
+θ
+v_{\theta}
+and the target velocity:
+ℒ
+FM
+=
+𝔼
+x
+0
+,
+z
+,
+τ
+​
+[
+|
+v
+θ
+​
+(
+x
+τ
+,
+τ
+)
+−
+(
+z
+−
+x
+0
+)
+|
+2
+]
+,
+\mathcal{L}_{\text{FM}}=\mathbb{E}_{x_{0},z,\tau}\left[\left|v_{\theta}(x_{\tau},\tau)-(z-x_{0})\right|^{2}\right],
+(3)
+where
+τ
+\tau
+is sampled uniformly from
+𝒰
+⁡
+[
+0
+,
+1
+]
+\mathcal{U}[0,1]
+.
+During inference, sampling is performed by solving the Ordinary Differential Equation (ODE) associated with the learned velocity field
+v
+θ
+v_{\theta}
+. This process involves integrating
+v
+θ
+v_{\theta}
+starting from the noise distribution at
+τ
+=
+1
+\tau=1
+toward the data distribution at
+τ
+=
+0
+\tau=0
+:
+d
+​
+x
+d
+​
+τ
+=
+v
+θ
+​
+(
+x
+,
+τ
+)
+,
+x
+1
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+.
+\frac{dx}{d\tau}=v_{\theta}(x,\tau),\quad x_{1}\sim\mathcal{N}(0,I).
+(4)
+We employ a first-order Euler discretization to perform the numerical integration. Given a total of
+N
+N
+sampling steps and a constant step size
+Δ
+​
+τ
+=
+1
+/
+N
+\Delta\tau=1/N
+, the iterative update rule is formulated as:
+x
+τ
+−
+Δ
+​
+τ
+=
+x
+τ
+−
+Δ
+​
+τ
+⋅
+v
+θ
+​
+(
+x
+τ
+,
+τ
+)
+.
+x_{\tau-\Delta\tau}=x_{\tau}-\Delta\tau\cdot v_{\theta}(x_{\tau},\tau).
+(5)
+Problem statement.
+Instead of current VLA policies that map directly from observations to actions as
+π
+θ
+​
+(
+𝐚
+t
+∣
+𝐨
+t
+,
+l
+)
+\pi_{\theta}(\mathbf{a}_{t}\mid\mathbf{o}_{t},l)
+(
+l
+l
+is the language goal), DiT4DiT follows a paradigm of
+predicting video dynamics-inverse dynamics
+. Specifically, the task is to sample video dynamics from inference of video DiT, and predict the actions by reversing the video dynamics sampled. We formulate the process as:
+𝐨
+t
++
+1
+\displaystyle\mathbf{o}_{t+1}
+∼
+p
+v
+(
+⋅
+∣
+𝐨
+t
+,
+l
+)
+,
+\displaystyle\sim p_{v}(\cdot\mid\mathbf{o}_{t},l),
+(6)
+𝐚
+t
+∼
+p
+a
+(
+⋅
+∣
+𝐨
+t
+,
+ℋ
+(
+𝐨
+t
++
+1
+τ
+v
+)
+\displaystyle\mathbf{a}_{t}\sim p_{a}(\cdot\mid\mathbf{o}_{t},\mathcal{H}(\mathbf{o}_{t+1}^{\tau_{v}})
+OPEN
+)
+,
+where
+​
+𝐨
+t
++
+1
+τ
+v
+→
+τ
+v
+→
+0
+𝐨
+t
++
+1
+\displaystyle),\text{where }\mathbf{o}_{t+1}^{\tau_{v}}\xrightarrow{\tau_{v}\to 0}\mathbf{o}_{t+1}
+(7)
+where
+p
+v
+p_{v}
+and
+p
+a
+p_{a}
+denote the probability distributions of video generation and action generation, respectively.
+𝐨
+t
++
+1
+τ
+v
+\mathbf{o}_{t+1}^{\tau_{v}}
+means the intermediate state of the future frame at flow step
+τ
+v
+\tau_{v}
+, reflecting its degree of generation, and
+ℋ
+\mathcal{H}
+means the process of extracting hidden states from the generation of
+𝐨
+t
++
+1
+τ
+v
+\mathbf{o}_{t+1}^{\tau_{v}}
+.
+The training task is to model the joint probability distribution
+p
+v
+​
+a
+p_{va}
+of
+p
+v
+p_{v}
+and
+p
+a
+p_{a}
+like:
+𝐨
+t
++
+1
+,
+𝐚
+t
+∼
+p
+v
+​
+a
+(
+⋅
+∣
+𝐨
+t
+,
+l
+)
+.
+\mathbf{o}_{t+1},\mathbf{a}_{t}\sim p_{va}(\cdot\mid\mathbf{o}_{t},l).
+(8)
+4.2
+Dual-DiT Architecture
+Let
+𝐨
+t
+∈
+ℝ
+T
+c
+​
+o
+​
+n
+​
+d
+×
+3
+×
+H
+×
+W
+\mathbf{o}_{t}\in\mathbb{R}^{T_{cond}\times 3\times H\times W}
+denote the observation frames (conditional input,
+T
+c
+​
+o
+​
+n
+​
+d
+T_{cond}
+denote the number of condition frames) and
+𝐨
+t
++
+1
+∈
+ℝ
+T
+v
+×
+3
+×
+H
+×
+W
+\mathbf{o}_{t+1}\in\mathbb{R}^{T_{v}\times 3\times H\times W}
+denote the ground truth future frames, where
+T
+v
+T_{v}
+represents the horizon of future frames.
+Video DiT.
+We use the Cosmos-Predict2.5-2B
+(
+Ali et al., 2025
+)
+as the initialization of our video backbone.
+This backbone consists of two primary components: a causal video VAE and a video diffusion transformer. The spatio-temporal VAE serves as the initial compression stage, mapping high-dimensional pixel-space observations
+𝐨
+t
+,
+𝐨
+t
++
+1
+\mathbf{o}_{t},\mathbf{o}_{t+1}
+into a compact latent space via significant spatial and temporal downsampling, denoted as
+𝐳
+t
+0
+,
+𝐳
+t
++
+1
+0
+\mathbf{z}_{t}^{0},\mathbf{z}_{t+1}^{0}
+.
+The normalized latents
+𝐳
+t
+0
+\mathbf{z}_{t}^{0}
+are then processed by the DiT, which utilizes a flow-prediction parameterization and is conditioned on language instructions via multi-layer embeddings from Cosmos-Reason1
+(
+Azzolini et al., 2025
+)
+. Crucially, rather than utilizing the final denoised video output, we repurpose the DiT
+(
+Peebles and Xie, 2023
+)
+as a feature extractor: a forward hook mechanism intercepts intermediate hidden activations in flow timestep
+τ
+f
+\tau_{f}
+—either from a specific deep transformer block or averaged across all layers—converting the generative process into rich visual tokens for downstream tasks. This process is formulated as:
+𝐡
+t
+τ
+f
+=
+ℋ
+[
+v
+θ
+video
+]
+(
+𝐳
+t
++
+1
+τ
+f
+,
+τ
+f
+∣
+𝐳
+t
+0
+,
+l
+)
+,
+where
+𝐳
+t
++
+1
+τ
+f
+→
+τ
+f
+→
+0
+𝐳
+t
++
+1
+0
+\mathbf{h}_{t}^{\tau_{f}}=\mathcal{H}\big[v_{\theta}^{\text{video}}\big]\big(\mathbf{z}_{t+1}^{\tau_{f}},\tau_{f}\mid\mathbf{z}_{t}^{0},l\big),\quad\text{where }\mathbf{z}_{t+1}^{\tau_{f}}\xrightarrow{\tau_{f}\to 0}\mathbf{z}_{t+1}^{0}
+(9)
+where
+ℋ
+⁡
+[
+⋅
+]
+\mathcal{H}\big[\cdot\big]
+denotes the hook operator that extracts the internal hidden states during the forward pass of the velocity network
+v
+θ
+video
+v_{\theta}^{\text{video}}
+, and
+𝐳
+t
++
+1
+τ
+f
+→
+τ
+f
+→
+0
+𝐳
+t
++
+1
+0
+\mathbf{z}_{t+1}^{\tau_{f}}\xrightarrow{\tau_{f}\to 0}\mathbf{z}_{t+1}^{0}
+indicates the probability flow toward the clean future latent.
+Action DiT.
+To decode these visual representations into continuous robot control commands, we employ a dedicated action diffusion transformer adapted from the GR00T-N1
+(
+Bjorck et al., 2025
+)
+. This component operates as a separate flow-matching model composed of a stack of transformer blocks, each utilizing Adaptive Layer Normalization (AdaLN)
+(
+Peebles and Xie, 2023
+)
+to inject diffusion timestep information and cross-attention layers to attend to the visual features
+𝐡
+t
+τ
+f
+\mathbf{h}_{t}^{\tau_{f}}
+extracted by the video backbone. The input sequence to this DiT is a concatenation of proprioceptive state embeddings, encoded noisy action trajectories, and a set of learnable “future tokens” that serve as compressed queries for the motion planning task. Through the cross-attention mechanism, the action head fuses the spatiotemporal visual context with the robot’s state, refining the noisy inputs into a coherent trajectory. The network terminates with a linear projection that predicts the velocity vector field of the action sequence, allowing the final trajectory to be synthesized via iterative numerical integration during inference.
+4.3
+Joint Training of Video and Action
+To operationalize the simultaneous modeling of latent representations for both video and action, we propose a Dual Flow-Matching mechanism. This approach unifies the generative video prediction and the inverse dynamics of action inference into a single learning paradigm, optimizing both DiTs through a joint objective.
+Figure 3:
+Asymmetric tri-timestep design.
+We decouple the diffusion timesteps to optimize joint video-action generation. The video module uses uniform sampling (
+τ
+v
+\tau_{v}
+) to capture the full denoising trajectory, while the action module uses Beta sampling (
+τ
+a
+\tau_{a}
+) to focus on critical control phases. Meanwhile, stable visual conditions are extracted at a fixed deterministic timestep (
+τ
+f
+\tau_{f}
+) from the evolving hidden states (
+h
+t
+1
+→
+h
+t
+0
+h_{t}^{1}\rightarrow h_{t}^{0}
+).
+Tri-timestep scheme.
+A core challenge in this joint optimization is balancing the divergent requirements of generative modeling and feature extraction. To address this and achieve the simultaneous modeling of latent representations for both video and action, we adopt an asymmetric
+tri-timestep
+scheme that decouples the diffusion process of the visual backbone from that of the action module, as shown in Fig.
+3
+.
+For the video generation module, we follow the standard diffusion training
+(
+NVIDIA et al., 2025a
+;
+Ali et al., 2025
+)
+paradigm. At each training step, the prediction timestep
+τ
+v
+\tau_{v}
+is randomly sampled from a uniform distribution,
+τ
+v
+∼
+𝒰
+⁡
+[
+0
+,
+1
+]
+\tau_{v}\sim\mathcal{U}[0,1]
+. This exposes the model to all noise levels, forcing it to learn the full denoising trajectory required to synthesize future frames.
+Conversely, the feature extraction process requires deterministic and consistent representations across iterations to ensure the downstream action module receives a stable input signal. Therefore, when extracting the intermediate representation
+𝐡
+t
+τ
+f
+\mathbf{h}_{t}^{\tau_{f}}
+, we forward the context frames through the denoising backbone at a
+fixed
+timestep, denoted as
+τ
+f
+\tau_{f}
+. This fixed timestep acts as a conditioning signal, selecting a specific “operating point” of the backbone: while early diffusion stages emphasize global structure, later stages attend to fine-grained details. By fixing this value, we stabilize the latent representations, yielding features that are consistently informative for downstream action prediction during both training and inference.
+Finally, the action DiT relies on a third, independent timestep,
+τ
+a
+\tau_{a}
+. Unlike the video generation module which employs uniform sampling,
+τ
+a
+\tau_{a}
+is drawn from a Beta distribution during training (
+τ
+a
+=
+1
+−
+σ
+\tau_{a}=1-\sigma
+, where
+σ
+∼
+Beta
+​
+(
+α
+,
+β
+)
+\sigma\sim\text{Beta}(\alpha,\beta)
+). This biased continuous-time sampling strategy allocates more training capacity to the most critical stages of the flow trajectory. This complete decoupling allows the action decoder to independently learn the optimal inverse dynamics—mapping pure noise to precise actions—while remaining continuously conditioned on the stable visual features provided by the fixed feature-extraction timestep
+τ
+f
+\tau_{f}
+.
+Training.
+The video and action DiTs are jointly fine-tuned to achieve simultaneous modeling of latent representations for both video and action, as detailed in Algorithm
+1
+. During training, the text encoder and visual VAE are frozen, restricting the parameter updates entirely to the DiT modules to adapt them to the target domain.
+Building upon this dual-timestep design, the overall training objective is formulated as a joint flow-matching loss:
+ℒ
+t
+total
+=
+𝔼
+τ
+a
+,
+ϵ
+[
+‖
+v
+ϕ
+action
+(
+𝐚
+t
+τ
+a
+,
+τ
+a
+∣
+𝐡
+t
+τ
+f
+,
+s
+)
+−
+(
+ϵ
+−
+𝐚
+t
+0
+)
+‖
+2
+]
+⏟
+Action Flow Matching Loss
++
+λ
+​
+𝔼
+τ
+v
+,
+z
+[
+‖
+v
+θ
+video
+(
+𝐳
+t
++
+1
+τ
+v
+,
+τ
+v
+∣
+𝐳
+t
+0
+,
+l
+)
+−
+(
+z
+−
+𝐳
+t
++
+1
+0
+)
+‖
+2
+]
+⏟
+Video Flow Matching Loss
+\mathcal{L}^{\text{total}}_{t}=\underbrace{\mathbb{E}_{\tau_{a},\epsilon}\left[\left\|v_{\phi}^{\text{action}}\left(\mathbf{a}_{t}^{\tau_{a}},\tau_{a}\mid\mathbf{h}_{t}^{\tau_{f}},s\right)-(\epsilon-\mathbf{a}_{t}^{0})\right\|^{2}\right]}_{\text{Action Flow Matching Loss}}\\
++\lambda\underbrace{\mathbb{E}_{\tau_{v},z}\left[\left\|v_{\theta}^{\text{video}}\left(\mathbf{z}_{t+1}^{\tau_{v}},\tau_{v}\mid\mathbf{z}_{t}^{0},l\right)-(z-\mathbf{z}_{t+1}^{0})\right\|^{2}\right]}_{\text{Video Flow Matching Loss}}
+(10)
+where
+λ
+\lambda
+is a scalar coefficient that balances the two learning signals. For the video flow-matching objective, the video DiT is trained to predict the velocity via
+v
+θ
+video
+v_{\theta}^{\text{video}}
+that transports the current observation
+𝐳
+t
+0
+\mathbf{z}_{t}^{0}
+and language goal
+l
+l
+toward the future latent state.
+For the action flow-matching objective, the action DiT learns to map the noisy action to the target action velocity
+ϵ
+−
+𝐚
+t
+0
+\epsilon-\mathbf{a}_{t}^{0}
+. Crucially, this action prediction is conditioned on the robot’s proprioceptive state
+s
+s
+and the hidden features
+𝐡
+t
+τ
+f
+\mathbf{h}_{t}^{\tau_{f}}
+extracted from the video backbone in timestep
+τ
+f
+\tau_{f}
+as shown in Eqn.
+9
+. By jointly minimizing these objectives, the framework ensures that the generative dynamics of the visual world inherently scaffold the execution of complex robotic actions.
+Algorithm 1
+Joint Training of Video and Action DiT
+1:
+Observation
+𝐨
+t
+\mathbf{o}_{t}
+, future frame
+𝐨
+t
++
+1
+\mathbf{o}_{t+1}
+, action
+𝐚
+0
+\mathbf{a}_{0}
+, state
+s
+s
+, language goal
+l
+l
+, action mask
+M
+M
+2:
+Updated parameters
+θ
+\theta
+(Video DiT),
+ϕ
+\phi
+(Action DiT)
+3:
+// ===== Video DiT Forward =====
+4:
+𝐳
+t
+0
+←
+VAE
+enc
+​
+(
+𝐨
+t
+)
+\mathbf{z}_{t}^{0}\leftarrow\text{VAE}_{\text{enc}}(\mathbf{o}_{t})
+⊳
+\triangleright
+Encode observation
+5:
+𝐳
+t
++
+1
+0
+←
+VAE
+enc
+​
+(
+𝐨
+t
++
+1
+)
+\mathbf{z}_{t+1}^{0}\leftarrow\text{VAE}_{\text{enc}}(\mathbf{o}_{t+1})
+⊳
+\triangleright
+Encode future frames
+6:
+τ
+v
+∼
+𝒰
+⁡
+[
+0
+,
+1
+]
+\tau_{v}\sim\mathcal{U}[0,1]
+⊳
+\triangleright
+Sample video timestep
+7:
+z
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+z\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Sample video noise
+8:
+𝐳
+t
++
+1
+τ
+v
+←
+(
+1
+−
+τ
+v
+)
+⋅
+𝐳
+t
++
+1
+0
++
+τ
+v
+⋅
+z
+\mathbf{z}_{t+1}^{\tau_{v}}\leftarrow(1-\tau_{v})\cdot\mathbf{z}_{t+1}^{0}+\tau_{v}\cdot z
+⊳
+\triangleright
+Noisy future latent
+9:
+v
+^
+video
+←
+v
+θ
+video
+(
+𝐳
+t
++
+1
+τ
+v
+,
+τ
+v
+∣
+𝐳
+t
+0
+,
+l
+)
+\hat{v}_{\text{video}}\leftarrow v_{\theta}^{\text{video}}(\mathbf{z}_{t+1}^{\tau_{v}},\tau_{v}\mid\mathbf{z}_{t}^{0},l)
+⊳
+\triangleright
+Predict velocity
+10:
+v
+video
+∗
+←
+z
+−
+𝐳
+t
++
+1
+0
+v^{*}_{\text{video}}\leftarrow z-\mathbf{z}_{t+1}^{0}
+⊳
+\triangleright
+Target velocity
+11:
+ℒ
+video
+←
+‖
+v
+^
+video
+−
+v
+video
+∗
+‖
+2
+\mathcal{L}_{\text{video}}\leftarrow\|\hat{v}_{\text{video}}-v^{*}_{\text{video}}\|^{2}
+⊳
+\triangleright
+Video loss
+12:
+// ===== Extract Hidden States =====
+13:
+τ
+f
+∼
+𝒰
+⁡
+{
+0
+/
+T
+,
+1
+/
+T
+,
+…
+,
+T
+/
+T
+}
+\tau_{f}\sim\mathcal{U}\{0/T,1/T,\dots,T/T\}
+⊳
+\triangleright
+Sample hidden extracting timestep
+14:
+𝐳
+^
+t
++
+1
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{z}}_{t+1}\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Sample future noise
+15:
+𝐡
+t
+τ
+f
+←
+ℋ
+⁡
+(
+θ
+,
+𝐳
+^
+t
++
+1
+,
+τ
+f
+,
+𝐳
+t
+0
+,
+l
+)
+\mathbf{h}_{t}^{\tau_{f}}\leftarrow\mathcal{H}(\theta,\hat{\mathbf{z}}_{t+1},\tau_{f},\mathbf{z}_{t}^{0},l)
+⊳
+\triangleright
+Extract hidden states
+16:
+// ===== Action DiT Forward =====
+17:
+σ
+∼
+Beta
+​
+(
+α
+,
+β
+)
+\sigma\sim\text{Beta}(\alpha,\beta)
+;
+τ
+a
+←
+1
+−
+σ
+\tau_{a}\leftarrow 1-\sigma
+⊳
+\triangleright
+Sample action timestep
+18:
+ϵ
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\epsilon\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Sample action noise
+19:
+𝐚
+t
+τ
+a
+←
+(
+1
+−
+τ
+a
+)
+⋅
+𝐚
+t
+0
++
+τ
+a
+⋅
+ϵ
+\mathbf{a}_{t}^{\tau_{a}}\leftarrow(1-\tau_{a})\cdot\mathbf{a}_{t}^{0}+\tau_{a}\cdot\epsilon
+⊳
+\triangleright
+Noisy action
+20:
+v
+^
+action
+←
+v
+ϕ
+action
+(
+𝐚
+t
+τ
+a
+,
+τ
+a
+∣
+𝐡
+t
+τ
+f
+,
+s
+)
+\hat{v}_{\text{action}}\leftarrow v_{\phi}^{\text{action}}(\mathbf{a}_{t}^{\tau_{a}},\tau_{a}\mid\mathbf{h}_{t}^{\tau_{f}},s)
+⊳
+\triangleright
+Predict velocity
+21:
+v
+action
+∗
+←
+ϵ
+−
+𝐚
+t
+0
+v^{*}_{\text{action}}\leftarrow\epsilon-\mathbf{a}_{t}^{0}
+⊳
+\triangleright
+Target velocity
+22:
+ℒ
+action
+←
+‖
+(
+v
+^
+action
+−
+v
+action
+∗
+)
+⊙
+M
+‖
+2
+/
+‖
+M
+‖
+1
+\mathcal{L}_{\text{action}}\leftarrow\|(\hat{v}_{\text{action}}-v^{*}_{\text{action}})\odot M\|^{2}/\|M\|_{1}
+⊳
+\triangleright
+Masked action loss
+23:
+// ===== Backward =====
+24:
+ℒ
+total
+←
+ℒ
+action
++
+λ
+⋅
+ℒ
+video
+\mathcal{L}_{\text{total}}\leftarrow\mathcal{L}_{\text{action}}+\lambda\cdot\mathcal{L}_{\text{video}}
+25:
+Update
+θ
+,
+ϕ
+\theta,\phi
+via
+∇
+ℒ
+total
+\nabla\mathcal{L}_{\text{total}}
+4.4
+Inference
+During inference, the DiT4DiT framework demonstrates highly flexible generative capabilities, equipped to perform both video generation and action prediction. It executes a decoupled sampling procedure that can synthesize future visual dynamics, infer precise robot control commands, or perform both tasks concurrently, as detailed in Algorithm
+2
+.
+Video DiT Sampling.
+When tasked with synthesizing future visual dynamics, the framework activates the video generation pathway. The current observation
+𝐨
+t
+\mathbf{o}_{t}
+is compressed into a latent representation
+𝐳
+t
+0
+\mathbf{z}_{t}^{0}
+via the frozen VAE encoder. Starting from a standard Gaussian noise distribution
+𝐳
+^
+t
++
+1
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{z}}_{t+1}\sim\mathcal{N}(0,I)
+, the video model iteratively updates the latent over
+N
+v
+N_{v}
+discrete steps. At each flow step
+τ
+v
+\tau_{v}
+, the network predicts the velocity field
+v
+^
+\hat{v}
+conditioned on the initial observation
+𝐳
+t
+0
+\mathbf{z}_{t}^{0}
+and the language goal
+l
+l
+. The latent is updated using the Euler step rule until it reaches the clean future state, which is subsequently projected back to pixel space via the VAE decoder to yield the predicted future frame
+𝐨
+^
+t
++
+1
+\hat{\mathbf{o}}_{t+1}
+.
+Action DiT Sampling.
+Rather than relying on the intermediate states of the full video generation loop, the action conditioning requires only a single, deterministic feature extraction step. We sample a new noise latent and perform a single forward pass through the video backbone evaluated strictly at the fixed feature-extraction timestep
+τ
+f
+\tau_{f}
+. This step intercepts the intermediate activations via the hook mechanism
+ℋ
+\mathcal{H}
+, yielding a stable and deterministic hidden representation
+𝐡
+t
+τ
+f
+\mathbf{h}_{t}^{\tau_{f}}
+. With the visual context established, the action trajectory is initialized from noise
+𝐚
+^
+t
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{a}}_{t}\sim\mathcal{N}(0,I)
+. Over
+N
+a
+N_{a}
+numerical integration steps, the Action DiT predicts the action velocity field conditioned on the extracted generative features
+𝐡
+t
+τ
+f
+\mathbf{h}_{t}^{\tau_{f}}
+and the robot’s proprioceptive state
+s
+s
+. The trajectory is refined iteratively, ultimately yielding the precise predicted action
+𝐚
+^
+t
+\hat{\mathbf{a}}_{t}
+.
+Algorithm 2
+DiT4DiT Inference
+1:
+Observation
+𝐨
+t
+\mathbf{o}_{t}
+, state
+s
+s
+, language goal
+l
+l
+2:
+N
+v
+N_{v}
+: video sampling steps,
+N
+a
+N_{a}
+: action sampling steps
+3:
+Predicted action
+𝐚
+t
+^
+\hat{\mathbf{a}_{t}}
+, predicted future frame
+𝐨
+^
+t
++
+1
+\hat{\mathbf{o}}_{t+1}
+4:
+// ===== Video DiT Sampling =====
+5:
+𝐳
+t
+0
+←
+VAE
+enc
+​
+(
+𝐨
+t
+)
+\mathbf{z}_{t}^{0}\leftarrow\text{VAE}_{\text{enc}}(\mathbf{o}_{t})
+6:
+𝐳
+^
+t
++
+1
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{z}}_{t+1}\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Initialize from noise
+7:
+Δ
+​
+τ
+v
+←
+1
+/
+N
+v
+\Delta\tau_{v}\leftarrow 1/N_{v}
+8:
+for
+i
+=
+0
+,
+1
+,
+…
+,
+N
+v
+−
+1
+i=0,1,\ldots,N_{v}-1
+do
+9:
+τ
+v
+←
+1
+−
+i
+⋅
+Δ
+​
+τ
+v
+\tau_{v}\leftarrow 1-i\cdot\Delta\tau_{v}
+10:
+v
+^
+←
+v
+θ
+video
+(
+𝐳
+^
+t
++
+1
+,
+τ
+v
+∣
+𝐳
+t
+0
+,
+l
+)
+\hat{v}\leftarrow v_{\theta}^{\text{video}}(\hat{\mathbf{z}}_{t+1},\tau_{v}\mid\mathbf{z}_{t}^{0},l)
+11:
+𝐳
+^
+t
++
+1
+←
+𝐳
+^
+t
++
+1
+−
+Δ
+​
+τ
+v
+⋅
+v
+^
+\hat{\mathbf{z}}_{t+1}\leftarrow\hat{\mathbf{z}}_{t+1}-\Delta\tau_{v}\cdot\hat{v}
+⊳
+\triangleright
+Euler step backward
+12:
+end
+for
+13:
+𝐨
+^
+t
++
+1
+←
+VAE
+dec
+​
+(
+𝐳
+^
+t
++
+1
+)
+\hat{\mathbf{o}}_{t+1}\leftarrow\text{VAE}_{\text{dec}}(\hat{\mathbf{z}}_{t+1})
+14:
+// ===== Action DiT Sampling =====
+15:
+𝐚
+^
+t
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{a}}_{t}\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Initialize from noise
+16:
+𝐳
+^
+t
++
+1
+∼
+𝒩
+⁡
+(
+0
+,
+I
+)
+\hat{\mathbf{z}}_{t+1}\sim\mathcal{N}(0,I)
+⊳
+\triangleright
+Initialize from noise
+17:
+𝐡
+t
+τ
+f
+←
+ℋ
+⁡
+(
+θ
+,
+𝐳
+^
+t
++
+1
+,
+τ
+f
+,
+𝐳
+t
+0
+,
+l
+)
+\mathbf{h}_{t}^{\tau_{f}}\leftarrow\mathcal{H}(\theta,\hat{\mathbf{z}}_{t+1},\tau_{f},\mathbf{z}_{t}^{0},l)
+⊳
+\triangleright
+Extract hidden states
+18:
+Δ
+​
+τ
+←
+1
+/
+N
+a
+\Delta\tau\leftarrow 1/N_{a}
+19:
+for
+i
+=
+0
+,
+1
+,
+…
+,
+N
+a
+−
+1
+i=0,1,\ldots,N_{a}-1
+do
+20:
+τ
+a
+←
+1
+−
+i
+⋅
+Δ
+​
+τ
+a
+\tau_{a}\leftarrow 1-i\cdot\Delta\tau_{a}
+21:
+v
+^
+←
+v
+ϕ
+action
+(
+𝐚
+^
+t
+,
+τ
+a
+∣
+𝐡
+t
+τ
+f
+,
+s
+)
+\hat{v}\leftarrow v_{\phi}^{\text{action}}(\hat{\mathbf{a}}_{t},\tau_{a}\mid\mathbf{h}_{t}^{\tau_{f}},s)
+22:
+𝐚
+^
+t
+←
+𝐚
+^
+t
+−
+Δ
+​
+τ
+⋅
+v
+^
+\hat{\mathbf{a}}_{t}\leftarrow\hat{\mathbf{a}}_{t}-\Delta\tau\cdot\hat{v}
+⊳
+\triangleright
+Euler step backward
+23:
+end
+for
+24:
+return
+𝐚
+^
+t
+,
+𝐨
+^
+t
++
+1
+\hat{\mathbf{a}}_{t},\hat{\mathbf{o}}_{t+1}
+5
+Experiments
+Figure 4:
+Real-world evaluation suite on the Unitree G1 humanoid robot.
+The selected tasks evaluate distinct dimensions of robotic proficiency, ranging from high-precision spatial manipulation (e.g.,
+stack up the cups, insert plate into the rack, arrange the flower
+) to complex, extended-horizon execution (e.g.,
+box packing, drawer interaction)
+.
+We evaluate DiT4DiT to address three primary questions: (1) how DiT4DiT compares with state-of-the-art VLM-based policies in both simulation and real-world deployment; (2) whether a VAM with a video-generative backbone offers advantages over a parameter-matched VLM-based VLA baseline; and (3) how well DiT4DiT generalizes under distribution shifts. To answer these questions, we conduct a comprehensive experimental suite covering benchmark comparison, real-world evaluation, zero-shot generalization, and ablation/efficiency analysis across different tasks and robot embodiments.
+5.1
+Experiment Setup
+LIBERO benchmark.
+LIBERO benchmark
+(
+Liu et al., 2024
+)
+focuses on manipulation tasks performed by a Franka Emika Panda manipulator. The evaluation spans four distinct suites—LIBERO-Spatial, LIBERO-Object, LIBERO-Goal, and LIBERO-Long—designed to systematically test a model’s proficiency in generalizing to novel spatial configurations, interacting with unseen objects, interpreting language instructions, and executing extended-horizon behaviors, respectively. The standard dataset for each category contains exactly 500 demonstration trajectories, distributed evenly across 10 unique tasks.
+RoboCasa-GR1 tabletop benchmark.
+To further evaluate our approach on a more complex embodiment, we adopt the RoboCasa-GR1 tabletop benchmark
+(
+Bjorck et al., 2025
+;
+Nasiriany et al., 2024
+)
+. Built upon the RoboCasa simulation framework, this benchmark features the Fourier GR1 humanoid robot equipped with two 7-DoF arms, two 6-DoF Fourier dexterous hands, and a 3-DoF waist, resulting in a 29-dimensional action space. For visual observations, our policy relies exclusively on the robot’s egocentric (ego-view) camera. The suite encompasses 24 distinct household manipulation tasks, designed to assess a policy’s ability to handle diverse activities ranging from articulated object interaction (e.g.,
+opening microwaves
+or
+cabinets
+) to complex pick-and-place behaviors with novel objects. The standard dataset provides an extensive collection of teleoperated demonstrations, supplying exactly 1,000 human-collected trajectories for each of the 24 tasks. During evaluation, each task is tested over 50 rollouts with a maximum episode horizon of 720 environment steps. We report the average success rate (%) across rollouts for each task and the overall average across all 24 tasks.
+Real-world G1 tasks.
+To validate the real-world applicability of our approach, we deploy our policy on a Unitree G1 humanoid robot. The robotic system features a continuous 16-DoF action space, driven by two 7-DoF arms and ALOHA2 grippers, and relies exclusively on the robot’s egocentric (ego-view) camera for visual observations. To comprehensively assess the model’s robustness across diverse physical interactions and spatial reasoning challenges, we construct a benchmark suite comprising seven distinct household manipulation tasks. As illustrated in Fig.
+4
+, these include:
+pick and place, arrange the flower, stack up the cups, insert plate into the rack, box packaging, move the spoon
+, and
+drawer interaction
+. For each task, we collected a dataset of exactly 200 human demonstration episodes. During the evaluation phase, performance is measured over 20 independent real-world rollouts per task, with the success rate reported as the primary metric.
+Policy Setup and Baselines.
+To rigorously evaluate the proposed DiT4DiT framework, we benchmark it against a diverse set of state-of-the-art policies, primarily focusing on the established GR00T series
+(
+Bjorck et al., 2025
+;
+NVIDIA et al., 2025b
+)
+and a custom, parameter-matched baseline denoted as Qwen3DiT. This baseline method combines Qwen3-VL
+(
+Bai et al., 2025
+)
+2B foundation model with the same action DiT used in DiT4DiT.
+For the simulated experiments, we train both DiT4DiT and Qwen3DiT entirely from scratch. This guarantees a strictly fair comparison of their inherent architectural efficiency and learning capabilities, while the remaining external baselines are evaluated using their official open-sourced pre-trained weights.
+For the real-world experiments, we employ a two-stage training pipeline. DiT4DiT is first pre-trained on a subset of the simulated GR1 dataset
+(
+Bjorck et al., 2025
+)
+, comprising 241,450 episodes, to acquire fundamental spatiotemporal priors, followed by fine-tuning on the teleoperated real-world G1 demonstrations. Under this setting, we compare our approach against GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+and Qwen3DiT. To provide a stringent ablation, Qwen3DiT is subjected to the exact same pre-training and fine-tuning pipeline as DiT4DiT. In contrast, GR00T-N1.5 is initialized from its official pre-trained weights, benefiting from a significantly larger scale of prior data before being fine-tuned on our target real-world tasks. Specifically, our pre-training data volume is merely
+∼
+\sim
+15%
+of the scale of training data leveraged by the official GR00T-N1.5 model.
+5.2
+Comparison against State-of-the-art Policies
+Spatial SR (%)
+Object SR (%)
+Goal SR (%)
+Long SR (%)
+Average SR (%)
+Diffusion Policy
+(
+Chi et al., 2023
+)
+78.3
+92.5
+68.3
+50.5
+72.4
+Dita
+(
+Hou et al., 2025
+)
+97.4
+94.8
+93.2
+83.6
+92.3
+π
+0
+\pi_{0}
+(
+Black et al., 2024
+)
+96.8
+98.8
+95.8
+85.2
+94.2
+UniVLA
+(
+Bu et al., 2025
+)
+96.5
+96.8
+95.6
+92.0
+95.2
+π
+0.5
+\pi_{0.5}
+(
+Intelligence et al., 2025b
+)
+98.8
+98.2
+98.0
+92.4
+96.9
+OpenVLA-OFT
+(
+Kim et al., 2025
+)
+97.6
+98.4
+97.9
+94.5
+97.1
+CogVLA
+(
+Li et al., 2025b
+)
+98.6
+98.8
+96.6
+95.4
+97.4
+GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+96.2
+94.0
+96.0
+90.0
+94.1
+Qwen3DiT (
+from scratch
+)
+98.0
+98.8
+96.0
+93.6
+96.6
+DiT4DiT (
+from scratch
+)
+98.4
+99.6
+98.6
+97.6
+98.6
+Table 1:
+Success rates (%) on the four evaluation suites of the LIBERO simulation benchmark.
+Bold numbers indicate the highest performance in each category. In this context,
+from scratch
+implies that the model was trained without using any action data outside of the current benchmark.
+Task
+GR00T-N1.5
+GR00T-N1.6
+Qwen3DiT
+DiT4DiT
+(
+Bjorck et al., 2025
+)
+(
+NVIDIA et al., 2025b
+)
+(
+from scratch
+)
+(
+from scratch
+)
+BottleToCabinetClose
+40.0
+36.0
+50.0
+48.0
+CanToDrawerClose
+56.0
+28.0
+48.0
+74.0
+CupToDrawerClose
+50.0
+12.0
+42.0
+52.0
+MilkToMicrowaveClose
+52.0
+20.0
+38.0
+50.0
+PotatoToMicrowaveClose
+22.0
+28.0
+18.0
+36.0
+WineToCabinetClose
+44.0
+18.0
+28.0
+42.0
+FromCuttingboardToBasket
+46.0
+42.0
+42.0
+52.0
+FromCuttingboardToCardboardbox
+44.0
+40.0
+30.0
+48.0
+FromCuttingboardToPan
+58.0
+62.0
+50.0
+76.0
+FromCuttingboardToPot
+48.0
+60.0
+44.0
+62.0
+FromCuttingboardToTieredbasket
+28.0
+48.0
+36.0
+50.0
+FromPlacematToBasket
+32.0
+42.0
+14.0
+50.0
+FromPlacematToBowl
+52.0
+34.0
+28.0
+56.0
+FromPlacematToPlate
+42.0
+42.0
+40.0
+32.0
+FromPlacematToTieredshelf
+26.0
+24.0
+30.0
+18.0
+FromPlateToBowl
+38.0
+48.0
+36.0
+56.0
+FromPlateToCardboardbox
+40.0
+44.0
+36.0
+58.0
+FromPlateToPan
+56.0
+48.0
+34.0
+68.0
+FromPlateToPlate
+50.0
+66.0
+44.0
+58.0
+FromTrayToCardboardbox
+36.0
+42.0
+48.0
+38.0
+FromTrayToPlate
+54.0
+52.0
+44.0
+56.0
+FromTrayToPot
+36.0
+64.0
+34.0
+54.0
+FromTrayToTieredbasket
+34.0
+42.0
+36.0
+46.0
+FromTrayToTieredshelf
+22.0
+38.0
+18.0
+38.0
+Average
+41.8
+40.8
+36.2
+50.8
+Table 2:
+RoboCasa-GR1 tabletop tasks evaluation results
+(success rate (%)). Bold numbers indicate the highest performance in each category.
+from scratch
+implies that the model was trained without using any action data outside of the current benchmark. While the GR00T models are fine-tuned from their pre-trained weights, they are trained for the exact same number of steps as Qwen3DiT and DiT4DiT, which are trained from scratch.
+LIBERO benchmark results.
+Table
+1
+presents the quantitative evaluation of our method alongside state-of-the-art baselines on the LIBERO
+(
+Liu et al., 2024
+)
+simulation benchmark. Overall, our proposed DiT4DiT trained from scratch achieves a new state-of-the-art average success rate of 98.6%, outperforming previous VLA models pre-trained in large-scale action datasets.
+When analyzing the distinct suites, DiT4DiT demonstrates exceptional generalization capabilities across novel objects and language instructions, achieving the highest success rates in the LIBERO-Object (99.6%) and LIBERO-Goal (98.6%) suites. Furthermore, our method exhibits a particularly striking advantage on the LIBERO-Long suite, which evaluates extended-horizon behaviors. DiT4DiT attains a 97.6% success rate on this challenging suite, significantly surpassing the next best method. This robust long-horizon performance strongly validates our design choice: by explicitly modeling the spatiotemporal dynamics through the video DiT backbone, our policy gains a deeper understanding of physical state transitions, which is crucial for executing complex, multi-stage manipulation tasks.
+Finally, compared to our direct baseline, Qwen3DiT (96.6% average), DiT4DiT yields consistent improvements across all four categories, confirming that our decoupled generative inverse dynamics and feature extraction mechanism successfully translate rich video priors into precise robotic control.
+RoboCasa-GR1 tabletop benchmark results.
+We evaluate on 24 challenging manipulation tasks from the RoboCasa-GR1 tabletop suite
+(
+Nasiriany et al., 2024
+)
+. As summarized in Table
+2
+, DiT4DiT achieves a new state-of-the-art average success rate of 50.8%. This significantly outperforms established, highly optimized policies, exceeding GR00T-N1.5 and GR00T-N1.6 by a substantial margin of 9.0 and 10.0 absolute percentage points, respectively.
+Crucially, we compare DiT4DiT against our parameter-matched direct baseline, Qwen3DiT (36.2%).
+DiT4DiT demonstrates a remarkable 14.6% absolute improvement over Qwen3DiT. This substantial leap strongly validates our core hypothesis: substituting static image-text priors with the implicit spatiotemporal dynamics of a generative video model provides a superior conditioning signal for learning complex inverse dynamics.
+Examining individual tasks, DiT4DiT exhibits dominant performance, achieving the highest success rate in 16 out of the 24 evaluated tasks. The performance gains are particularly pronounced in tasks demanding precise spatial coordination and complex physical interaction. For instance, on
+CanToDrawerClose
+(74.0% vs. 56.0%),
+FromCuttingboardToPan
+(76.0% vs. 62.0%), and
+FromPlateToPan
+(68.0% vs. 56.0%), our method eclipses the strongest baselines by margins exceeding 12%.
+Figure 5:
+Real-world evaluation results on the Unitree G1 robot
+. Success rates are reported across seven diverse household tasks. DiT4DiT comprehensively outperforms both the pre-trained GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+and the parameter-matched Qwen3DiT baseline, highlighting the efficiency and efficacy of our framework.
+Real-world G1 task results.
+We report the quantitative success rates across the seven real-world tasks in Fig.
+5
+. Overall, DiT4DiT demonstrates dominant and robust performance, comprehensively outperforming both the pre-trained GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+and our baseline, Qwen3DiT.
+The Qwen3DiT baseline suffers a near-total collapse in the real world. It fails to exceed a 10% success rate on any task and scores 0% on Drawer Interaction, Arrange Flower, and Box Packing. This failure underscores the limitation of static image-text priors: without massive real-world trajectory data, VLMs struggle to ground visual semantics into continuous 3D physical actions. In stark contrast, DiT4DiT successfully abstracts robust, physics-aware representations from the simulated pre-training phase, enabling highly effective transfer to the physical robot.
+When compared against GR00T-N1.5 (which benefits from a significantly larger scale of pre-training data), DiT4DiT still maintains a consistent lead, with particularly massive margins in tasks demanding high-precision spatial coordination. For example, in the
+Arrange Flower
+task, which requires delicate alignment to insert a thin stem into a vase, DiT4DiT achieves a 75% success rate, outperforming GR00T-N1.5 (25%). We observe similarly compelling gaps in
+Stack Cup
+(60% vs. 25%) and
+Move Spoon
+(40% vs. 15%). We hypothesize that the generative video backbone, by learning to predict future visual representations, inherently preserves more fine-grained visual details than standard VLA policy.
+Furthermore, DiT4DiT excels in extended-horizon and multi-stage reasoning tasks. On
+Drawer Interaction
+and
+Box Packing
+, which require the robot to sequence multiple distinct sub-goals (e.g., opening a flap, inserting an object, and retreating), DiT4DiT achieves 90% and 50% success rates, respectively. By intercepting intermediate denoising features that naturally encode future dynamic transitions, our tri-timestep mechanism equips the action policy with superior temporal consistency, ensuring stable execution over long physical horizons.
+5.3
+Generalization Capability
+Figure 6:
+Qualitative rollouts of real-world generalization tasks.
+We evaluate the policy’s zero-shot robustness against severe out-of-distribution physical variations. These include semantic and geometric shifts in
+Category
+(unseen cups and vases), complete object substitution in
+Object
+(packing corn instead of an eggplant), and scene clutter in
+Number
+(stacking four cups instead of three).
+We evaluate DiT4DiT in both simulation and real-world physical deployments to demonstrate its robust generalization.
+In the simulator, we designed a targeted object-substitution experiment within the RoboCasa
+(
+Nasiriany et al., 2024
+)
+environment. Specifically, we restricted the training distribution to three tasks involving only a single object category:
+BottleToDrawerClose, BottleToCabinetClose,
+and
+BottleToMicrowaveClose
+. During evaluation, we completely removed the bottle and tested the policies zero-shot on four unseen objects:
+Can, Cup, Milk,
+and
+Wine
+.
+DiT4DiT exhibits a remarkably stronger ability to generalize to novel objects compared to the parameter-matched Qwen3DiT baseline, as shown in the left panel of Fig.
+7
+. Across all three tasks, our approach maintains robust performance. Most notably, in the
+ToDrawerClose
+tasks, DiT4DiT achieves an impressive 54.5% success rate with the unseen objects, exceeding Qwen3DiT by a massive 22.5%. We observe similarly substantial margins in
+ToCabinetClose
+(34.0% vs. 24.5%) and
+ToMicrowaveClose
+(30.5% vs. 17.0%).
+Figure 7:
+Quantitative results of zero-shot generalization.
+(
+Left
+) Success rates in the simulated RoboCasa-GR1 environment when evaluated on entirely unseen objects. (
+Right
+) Success rates on the real-world Unitree G1 robot across four challenging out-of-distribution scenarios, testing category variations, novel object substitutions, and distractor quantities. DiT4DiT demonstrates superior robustness and physical abstraction compared to both the parameter-matched Qwen3DiT baseline and the pre-trained GR00T-N1.5
+(
+Bjorck et al., 2025
+)
+.
+To further validate these findings under complex physical dynamics, we introduced four challenging zero-shot generalization scenarios on the real-world Unitree G1 robot (visualized in Fig.
+6
+). These tasks evaluate three distinct dimensions of generalization:
+•
+Category generalization
+: In
+Stack Cup (Category)
+and
+Arrange Flower (Category)
+, we drastically alter the material, shape, and visual appearance of the interactive objects (e.g., swapping standard plastic cups for metallic/glass variants, and changing both the vase and the flower).
+•
+Object substitution
+: In
+Box Packing (Object)
+, the target item is completely replaced with a novel, out-of-distribution object (e.g., swapping an eggplant for corn).
+•
+Quantity variation
+: In
+Stack Cup (Number)
+, we test whether the policy can handle a different number of objects than seen during training, evaluating its resistance to distractors and novel scene clutter.
+As shown in the right panel of Fig.
+7
+, DiT4DiT demonstrates dominant zero-shot transfer capabilities in the physical world. The performance of the parameter-matched Qwen3DiT baseline completely collapses when faced with real-world visual shifts, scoring 0% on three out of the four tasks. In contrast, DiT4DiT successfully abstracts the underlying physical interactions, such as the spatial constraints of inserting a stem into a vase or aligning cups. Notably, on the
+Arrange Flower (Category)
+task, DiT4DiT achieves a 70% success rate, outperforming the Qwen3DiT (0%) the pre-trained GR00T-N1.5 (10%) by large margins. Even when modifying the quantity of objects in
+Stack Cup (Number)
+, DiT4DiT maintains a 50% success rate, proving that the generative video representations provide a robust, physics-aware understanding of the scene that is fundamentally invariant to surface-level visual changes or distractor counts.
+5.4
+Ablations
+Figure 8:
+Ablation studies on the DiT4DiT architecture.
+(a)
+Feature extraction layer:
+Success rate across different hidden layers of the video backbone, with performance peaking at layer 18. (b)
+Denoising steps:
+Impact of the number of iterative denoising steps used for action conditioning. A single forward step yields the highest success rate, preventing over-commitment to pixel-level reconstruction. (c)
+Representation learning:
+t-SNE visualization of latent features colored by the execution phase (Early, Middle, Late). Supported by a roughly twofold increase in the silhouette score
+(
+Rousseeuw, 1987
+)
+, our joint training objective successfully induces smooth temporal flows within each task cluster, transitioning fluidly from the Early (blue) through the Middle (yellow) to the Late (red) phases.
+Choice of feature extraction layer.
+To determine the optimal visual representation for action conditioning, we evaluate the impact of extracting hidden states from different transformer blocks within the Video DiT. We conduct our experiments on five tasks selected from the RoboCasa-GR1 benchmark (
+CanToDrawerClose, FromCuttingboardToBasket, FromPlacematToBowl, FromPlateToCardboardbox, FromTrayToPot
+).
+As illustrated in Figure
+8
+(a),
+the choice of extraction layer significantly influences the downstream success rate. Features from early layers (e.g., layers 2–8) yield poor performance, likely because they primarily encode low-level visual textures lacking actionable semantics. Performance steadily improves and peaks at layer 18, suggesting that middle-to-deep blocks strike the optimal balance, capturing the rich spatiotemporal physics and high-level scene understanding required for control. Interestingly, extracting from the final layers (layers 24–28) leads to a drastic performance collapse. The result suggests these terminal layers become overly specialized for the immediate video denoising and pixel-level reconstruction objective, thereby discarding abstract, control-relevant representations. Finally, while averaging features across all layers (“all”) yields highly competitive results, it falls slightly short of the single best layer. Consequently, we select layer 18 as the default extraction point for our framework.
+Denoise steps for hidden features.
+We investigate the impact of the number of iterative denoising steps used to extract the visual hidden features for the action policy. As shown in Figure
+8
+(b), we evaluate the average success rate across the five selected RoboCasa tasks while varying the denoising steps from 1 to 32. Interestingly, a single denoising step yields the highest performance, with the success rate monotonically degrading as the number of steps increases. The reason could be that excessive iterative denoising forces the hidden states to over-commit to the pixel-level details of a specific reconstructed future. So generalized robust action priors start to lose information with more steps.
+This intuition aligns with findings in recent work
+(
+Pai et al., 2025
+)
+, but this phenomenon is significantly more pronounced in our model, manifesting as a strict monotonic decline. We hypothesize that this extreme sensitivity is a direct consequence of our joint training paradigm: because the video and action generation are updated simultaneously, the action loss heavily regularizes the latent space to extract actionable semantics immediately at the first step, making it highly susceptible to the over-commitment of any subsequent denoising iterations.
+Crucially, this finding validates that high-frequency control can be achieved through a single forward pass, entirely bypassing the computational bottleneck of multi-step video generation.
+Joint
+v.s.
+decouple training.
+Finally, we analyze the representational benefits of our joint optimization paradigm. Figure
+8
+(c) provides a t-SNE visualization of the extracted hidden features, color-coded by their temporal phase within an episode (
+Early, Middle, Late
+). Under a decoupled training scheme, where the video generative model and the action policy are optimized independently, the features form clusters but exhibit fragmented and entangled temporal distributions within those clusters. Quantitatively, this enhanced temporal separation is reflected by a nearly twofold improvement in the silhouette score (increasing from 0.09 to 0.17).
+Visually, the latent features within each cluster exhibit relatively clear boundaries as they progress from the
+Early
+to
+Middle
+to
+Late
+phases. This qualitative evidence strongly corroborates our core hypothesis: joint training forces the visual backbone to embed a continuous, physics-aware temporal progression, directly empowering the action policy to reason about long-horizon execution and state transitions.
+5.5
+Efficiency Analysis
+Trainable Param Cnt
+Deploy Frequency
+GR00T-N1.5
+2.7B
+13Hz
+Qwen3DiT
+2.3B
+9Hz
+DiT4DiT
+2.2B
+6Hz
+Table 3:
+Deployment efficiency comparison
+. We report the trainable parameter count and real-world deployment frequency (Hz) for DiT4DiT and the primary baselines. While the video backbone introduces a computational trade-off yielding a 6Hz control rate (tested on a single NVIDIA A100 GPU), DiT4DiT remains the most parameter-efficient model and comfortably supports real-time closed-loop physical execution.
+To assess deployment feasibility, we compare trainable parameter count and real-world control frequency against core baselines (Table
+3
+). DiT4DiT has 2.2B trainable parameters, comparable to Qwen3DiT (2.3B) and smaller than GR00T-N1.5 (2.7B), indicating that its gains do not come from larger model size.
+DiT4DiT runs at 6Hz on the physical robot, versus 9Hz for Qwen3DiT and 13Hz for GR00T-N1.5. Although slower, this trade-off is expected for a video-generative backbone that extracts temporally grounded features. Unlike the two baselines, DiT4DiT does not train the LLM component during policy learning; therefore, for fixed tasks, the LLM features remain constant and can be pre-extracted and cached to avoid repeated inference, which can further improve the effective deployment frequency.
+6
+Conclusion
+We present DiT4DiT, an end-to-end Video-Action Model that unifies a video DiT and an action DiT through a dual flow-matching objective. Instead of depending on fully reconstructed future frames, our method leverages temporally grounded intermediate denoising features to condition action prediction, enabling physics-aware and stable continuous control.
+Across both simulation and real-world experiments, DiT4DiT consistently outperforms strong VLA baselines. It achieves state-of-the-art average success rates on LIBERO and RoboCasa-GR1 (98.6% and 50.8%), and maintains strong transfer performance on the Unitree G1 humanoid robot under real-world dynamics.
+Beyond aggregate performance, DiT4DiT shows improved robustness under challenging distribution shifts, including unseen object categories and object/scene variations. Overall, our results indicate that modeling video dynamics provides a more effective and data-efficient scaling proxy for policy learning than static image-text priors, offering a practical path toward more generalizable embodied agents.
+References
+Achiam
+et al.
+(2023)
+J. Achiam, S. Adler, S. Agarwal, L. Ahmad, I. Akkaya, F. L. Aleman, D. Almeida, J. Altenschmidt, S. Altman, S. Anadkat,
+et al.
+Gpt-4 technical report
+.
+arXiv preprint arXiv:2303.08774
+.
+Cited by:
+§1
+.
+Aldaco
+et al.
+(2024)
+J. Aldaco, T. Armstrong, R. Baruch, J. Bingham, S. Chan, K. Draper, D. Dwibedi, C. Finn, P. Florence, S. Goodrich,
+et al.
+Aloha 2: an enhanced low-cost hardware for bimanual teleoperation
+.
+arXiv preprint arXiv:2405.02292
+.
+Cited by:
+Figure 9
+,
+§A.3
+.
+Ali
+et al.
+(2025)
+A. Ali, J. Bai, M. Bala, Y. Balaji, A. Blakeman, T. Cai, J. Cao, T. Cao, E. Cha, Y. Chao,
+et al.
+World simulation with video foundation models for physical ai
+.
+arXiv preprint arXiv:2511.00062
+.
+Cited by:
+Table 4
+,
+§1
+,
+§2.1
+,
+§3
+,
+§4.2
+,
+§4.3
+.
+Azzolini
+et al.
+(2025)
+A. Azzolini, J. Bai, H. Brandon, J. Cao, P. Chattopadhyay, H. Chen, J. Chu, Y. Cui, J. Diamond, Y. Ding,
+et al.
+Cosmos-reason1: from physical common sense to embodied reasoning
+.
+arXiv preprint arXiv:2503.15558
+.
+Cited by:
+§4.2
+.
+Bai
+et al.
+(2025)
+S. Bai, Y. Cai, R. Chen, K. Chen, X. Chen, Z. Cheng, L. Deng, W. Ding, C. Gao, C. Ge,
+et al.
+Qwen3-vl technical report
+.
+arXiv preprint arXiv:2511.21631
+.
+Cited by:
+§1
+,
+§3
+,
+§5.1
+.
+Bi
+et al.
+(2025)
+H. Bi, H. Tan, S. Xie, Z. Wang, S. Huang, H. Liu, R. Zhao, Y. Feng, C. Xiang, Y. Rong,
+et al.
+Motus: a unified latent action world model
+.
+arXiv preprint arXiv:2512.13030
+.
+Cited by:
+§1
+,
+§2.2
+,
+§2.2
+.
+Bjorck
+et al.
+(2025)
+J. Bjorck, F. Castañeda, N. Cherniadev, X. Da, R. Ding, L. Fan, Y. Fang, D. Fox, F. Hu, S. Huang,
+et al.
+Gr00t n1: an open foundation model for generalist humanoid robots
+.
+arXiv preprint arXiv:2503.14734
+.
+Cited by:
+§A.2
+,
+§A.2
+,
+Table 5
+,
+Table 5
+,
+Figure 1
+,
+§1
+,
+§1
+,
+§2.1
+,
+§3
+,
+§3
+,
+§4.2
+,
+Figure 5
+,
+Figure 7
+,
+§5.1
+,
+§5.1
+,
+§5.1
+,
+§5.2
+,
+Table 1
+,
+Table 2
+.
+Black
+et al.
+(2024)
+K. Black, N. Brown, D. Driess, A. Esmail, M. Equi, C. Finn, N. Fusai, L. Groom, K. Hausman, B. Ichter,
+et al.
+Pi0: a vision-language-action flow model for general robot control
+.
+arXiv preprint arXiv:2410.24164
+.
+Cited by:
+§1
+,
+§2.1
+,
+Table 1
+.
+Brohan
+et al.
+(2023a)
+A. Brohan, N. Brown, J. Carbajal, Y. Chebotar, X. Chen, K. Choromanski, T. Ding, D. Driess, A. Dubey, C. Finn,
+et al.
+Rt-2: vision-language-action models transfer web knowledge to robotic control
+.
+arXiv preprint arXiv:2307.15818
+.
+Cited by:
+§1
+,
+§2.1
+.
+Brohan
+et al.
+(2023b)
+A. Brohan, Y. Chebotar, C. Finn, K. Hausman, A. Herzog, D. Ho, J. Ibarz, A. Irpan, E. Jang, R. Julian,
+et al.
+Do as i can, not as i say: grounding language in robotic affordances
+.
+In
+Conference on robot learning
+,
+pp. 287–318
+.
+Cited by:
+§1
+.
+Bu
+et al.
+(2025)
+Q. Bu, Y. Yang, J. Cai, S. Gao, G. Ren, M. Yao, P. Luo, and H. Li
+Univla: learning to act anywhere with task-centric latent actions
+.
+arXiv preprint arXiv:2505.06111
+.
+Cited by:
+§2.1
+,
+Table 1
+.
+Cai
+et al.
+(2025)
+H. Cai, S. Cao, R. Du, P. Gao, S. Hoi, Z. Hou, S. Huang, D. Jiang, X. Jin, L. Li,
+et al.
+Z-image: an efficient image generation foundation model with single-stream diffusion transformer
+.
+arXiv preprint arXiv:2511.22699
+.
+Cited by:
+§1
+.
+Cen
+et al.
+(2025)
+J. Cen, C. Yu, H. Yuan, Y. Jiang, S. Huang, J. Guo, X. Li, Y. Song, H. Luo, F. Wang,
+et al.
+Worldvla: towards autoregressive action world model
+.
+arXiv preprint arXiv:2506.21539
+.
+Cited by:
+§2.2
+.
+Chi
+et al.
+(2023)
+C. Chi, Z. Xu, S. Feng, E. Cousineau, Y. Du, B. Burchfiel, R. Tedrake, and S. Song
+Diffusion policy: visuomotor policy learning via action diffusion
+.
+The International Journal of Robotics Research
+,
+pp. 02783649241273668
+.
+Cited by:
+Table 1
+.
+Du
+et al.
+(2023)
+Y. Du, S. Yang, B. Dai, H. Dai, O. Nachum, J. Tenenbaum, D. Schuurmans, and P. Abbeel
+Learning universal policies via text-guided video generation
+.
+Advances in neural information processing systems
+36
+,
+pp. 9156–9172
+.
+Cited by:
+§2.2
+.
+Ebert
+et al.
+(2018)
+F. Ebert, C. Finn, S. Dasari, A. Xie, A. Lee, and S. Levine
+Visual foresight: model-based deep reinforcement learning for vision-based robotic control
+.
+arXiv preprint arXiv:1812.00568
+.
+Cited by:
+§2.2
+.
+Feng
+et al.
+(2025)
+Y. Feng, H. Tan, X. Mao, G. Liu, S. Huang, C. Xiang, H. Su, and J. Zhu
+Vidar: embodied video diffusion model for generalist bimanual manipulation
+.
+arXiv preprint arXiv:2507.12898
+.
+Cited by:
+§1
+,
+§2.2
+.
+Finn and Levine (2017)
+C. Finn and S. Levine
+Deep visual foresight for planning robot motion
+.
+In
+2017 IEEE international conference on robotics and automation (ICRA)
+,
+pp. 2786–2793
+.
+Cited by:
+§2.2
+.
+Hou
+et al.
+(2025)
+Z. Hou, T. Zhang, Y. Xiong, H. Duan, H. Pu, R. Tong, C. Zhao, X. Zhu, Y. Qiao, J. Dai,
+et al.
+Dita: scaling diffusion transformer for generalist vision-language-action policy
+.
+arXiv preprint arXiv:2503.19757
+.
+Cited by:
+Table 1
+.
+Hu
+et al.
+(2024)
+Y. Hu, Y. Guo, P. Wang, X. Chen, Y. Wang, J. Zhang, K. Sreenath, C. Lu, and J. Chen
+Video prediction policy: a generalist robot policy with predictive visual representations
+.
+arXiv preprint arXiv:2412.14803
+.
+Cited by:
+§2.2
+.
+Intelligence
+et al.
+(2025a)
+P. Intelligence, A. Amin, R. Aniceto, A. Balakrishna, K. Black, K. Conley, G. Connors, J. Darpinian, K. Dhabalia, J. DiCarlo,
+et al.
+A vla that learns from experience
+.
+arXiv preprint arXiv:2511.14759
+.
+Cited by:
+§1
+.
+Intelligence
+et al.
+(2025b)
+P. Intelligence, K. Black, N. Brown, J. Darpinian, K. Dhabalia, D. Driess, A. Esmail, M. Equi, C. Finn, N. Fusai,
+et al.
+π
+0.5
+\pi_{0.5}
+: a Vision-Language-Action Model with Open-World Generalization
+.
+arXiv preprint arXiv:2504.16054
+.
+Cited by:
+§1
+,
+§2.1
+,
+Table 1
+.
+Karamcheti
+et al.
+(2024)
+S. Karamcheti, S. Nair, A. Balakrishna, P. Liang, T. Kollar, and D. Sadigh
+Prismatic vlms: investigating the design space of visually-conditioned language models
+.
+arXiv preprint arXiv:2402.07865
+.
+Cited by:
+§1
+.
+Kim
+et al.
+(2025)
+M. J. Kim, C. Finn, and P. Liang
+Fine-tuning vision-language-action models: optimizing speed and success
+.
+arXiv preprint arXiv:2502.19645
+.
+Cited by:
+Table 1
+.
+Kim
+et al.
+(2026)
+M. J. Kim, Y. Gao, T. Lin, Y. Lin, Y. Ge, G. Lam, P. Liang, S. Song, M. Liu, C. Finn,
+et al.
+Cosmos policy: fine-tuning video models for visuomotor control and planning
+.
+arXiv preprint arXiv:2601.16163
+.
+Cited by:
+§1
+,
+§2.2
+.
+Kim
+et al.
+(2024)
+M. J. Kim, K. Pertsch, S. Karamcheti, T. Xiao, A. Balakrishna, S. Nair, R. Rafailov, E. Foster, G. Lam, P. Sanketi,
+et al.
+OpenVLA: an open-source vision-language-action model
+.
+arXiv preprint arXiv:2406.09246
+.
+Cited by:
+§1
+,
+§2.1
+.
+Kong
+et al.
+(2024)
+W. Kong, Q. Tian, Z. Zhang, R. Min, Z. Dai, J. Zhou, J. Xiong, X. Li, B. Wu, J. Zhang,
+et al.
+Hunyuanvideo: a systematic framework for large video generative models
+.
+arXiv preprint arXiv:2412.03603
+.
+Cited by:
+§2.1
+.
+Li
+et al.
+(2026)
+L. Li, Q. Zhang, Y. Luo, S. Yang, R. Wang, F. Han, M. Yu, Z. Gao, N. Xue, X. Zhu,
+et al.
+Causal world modeling for robot control
+.
+arXiv preprint arXiv:2601.21998
+.
+Cited by:
+§2.2
+,
+§2.2
+.
+Li
+et al.
+(2025a)
+S. Li, Y. Gao, D. Sadigh, and S. Song
+Unified video action model
+.
+arXiv preprint arXiv:2503.00200
+.
+Cited by:
+§1
+,
+§2.2
+.
+Li
+et al.
+(2025b)
+W. Li, R. Zhang, R. Shao, J. He, and L. Nie
+CogVLA: cognition-aligned vision-language-action model via instruction-driven routing & sparsification
+.
+arXiv preprint arXiv:2508.21046
+.
+Cited by:
+§1
+,
+§2.1
+,
+Table 1
+.
+Liang
+et al.
+(2025)
+J. Liang, P. Tokmakov, R. Liu, S. Sudhakar, P. Shah, R. Ambrus, and C. Vondrick
+Video generators are robot policies
+.
+arXiv preprint arXiv:2508.00795
+.
+Cited by:
+§1
+,
+§2.2
+.
+Liao
+et al.
+(2025)
+Y. Liao, P. Zhou, S. Huang, D. Yang, S. Chen, Y. Jiang, Y. Hu, J. Cai, S. Liu, J. Luo,
+et al.
+Genie envisioner: a unified world foundation platform for robotic manipulation
+.
+arXiv preprint arXiv:2508.05635
+.
+Cited by:
+§1
+,
+§2.2
+.
+Lipman
+et al.
+(2022)
+Y. Lipman, R. T. Chen, H. Ben-Hamu, M. Nickel, and M. Le
+Flow matching for generative modeling
+.
+arXiv preprint arXiv:2210.02747
+.
+Cited by:
+§4.1
+.
+Liu
+et al.
+(2024)
+B. Liu, Y. Zhu, C. Gao, Y. Feng, Q. Liu, Y. Zhu, and P. Stone
+Libero: benchmarking knowledge transfer for lifelong robot learning
+.
+Advances in Neural Information Processing Systems
+36
+.
+Cited by:
+§A.2
+,
+Table 5
+,
+§1
+,
+§5.1
+,
+§5.2
+.
+Nasiriany
+et al.
+(2024)
+S. Nasiriany, A. Maddukuri, L. Zhang, A. Parikh, A. Lo, A. Joshi, A. Mandlekar, and Y. Zhu
+Robocasa: large-scale simulation of everyday tasks for generalist robots
+.
+arXiv preprint arXiv:2406.02523
+.
+Cited by:
+§A.2
+,
+Figure 1
+,
+§1
+,
+§3
+,
+§5.1
+,
+§5.2
+,
+§5.3
+.
+NVIDIA
+et al.
+(2025a)
+NVIDIA, :, N. Agarwal, A. Ali, M. Bala, Y. Balaji, E. Barker, T. Cai, P. Chattopadhyay, Y. Chen, Y. Cui, Y. Ding, D. Dworakowski, J. Fan, M. Fenzi, F. Ferroni, S. Fidler, D. Fox, S. Ge, Y. Ge, J. Gu, S. Gururani, E. He, J. Huang, J. Huffman, P. Jannaty, J. Jin, S. W. Kim, G. Klár, G. Lam, S. Lan, L. Leal-Taixe, A. Li, Z. Li, C. Lin, T. Lin, H. Ling, M. Liu, X. Liu, A. Luo, Q. Ma, H. Mao, K. Mo, A. Mousavian, S. Nah, S. Niverty, D. Page, D. Paschalidou, Z. Patel, L. Pavao, M. Ramezanali, F. Reda, X. Ren, V. R. N. Sabavat, E. Schmerling, S. Shi, B. Stefaniak, S. Tang, L. Tchapmi, P. Tredak, W. Tseng, J. Varghese, H. Wang, H. Wang, H. Wang, T. Wang, F. Wei, X. Wei, J. Z. Wu, J. Xu, W. Yang, L. Yen-Chen, X. Zeng, Y. Zeng, J. Zhang, Q. Zhang, Y. Zhang, Q. Zhao, and A. Zolkowski
+Cosmos world foundation model platform for physical ai
+.
+External Links:
+2501.03575
+,
+Link
+Cited by:
+§1
+,
+§2.1
+,
+§4.3
+.
+NVIDIA
+et al.
+(2025b)
+NVIDIA, J. Bjorck, N. C. Fernando Castañeda, X. Da, R. Ding, L. ”. Fan, Y. Fang, D. Fox, F. Hu, S. Huang, J. Jang, Z. Jiang, J. Kautz, K. Kundalia, L. Lao, Z. Li, Z. Lin, K. Lin, G. Liu, E. Llontop, L. Magne, A. Mandlekar, A. Narayan, S. Nasiriany, S. Reed, Y. L. Tan, G. Wang, Z. Wang, J. Wang, Q. Wang, J. Xiang, Y. Xie, Y. Xu, Z. Xu, S. Ye, Z. Yu, A. Zhang, H. Zhang, Y. Zhao, R. Zheng, and Y. Zhu
+GR00T N1: an open foundation model for generalist humanoid robots
+.
+In
+ArXiv Preprint
+,
+External Links:
+2503.14734
+Cited by:
+§1
+,
+§1
+,
+§2.1
+,
+§5.1
+,
+Table 2
+.
+Pai
+et al.
+(2025)
+J. Pai, L. Achenbach, V. Montesinos, B. Forrai, O. Mees, and E. Nava
+Mimic-video: video-action models for generalizable robot control beyond vlas
+.
+arXiv preprint arXiv:2512.15692
+.
+Cited by:
+§1
+,
+§2.2
+,
+§5.4
+.
+Peebles and Xie (2023)
+W. Peebles and S. Xie
+Scalable diffusion models with transformers
+.
+In
+Proceedings of the IEEE/CVF international conference on computer vision
+,
+pp. 4195–4205
+.
+Cited by:
+§1
+,
+§4.2
+,
+§4.2
+.
+Rousseeuw (1987)
+P. J. Rousseeuw
+Silhouettes: a graphical aid to the interpretation and validation of cluster analysis
+.
+Journal of computational and applied mathematics
+20
+,
+pp. 53–65
+.
+Cited by:
+Figure 8
+.
+Shen
+et al.
+(2025)
+Y. Shen, F. Wei, Z. Du, Y. Liang, Y. Lu, J. Yang, N. Zheng, and B. Guo
+Videovla: video generators can be generalizable robot manipulators
+.
+arXiv preprint arXiv:2512.06963
+.
+Cited by:
+§2.2
+.
+Touvron
+et al.
+(2023)
+H. Touvron, L. Martin, K. Stone, P. Albert, A. Almahairi, Y. Babaei, N. Bashlykov, S. Batra, P. Bhargava, S. Bhosale,
+et al.
+Llama 2: open foundation and fine-tuned chat models
+.
+arXiv preprint arXiv:2307.09288
+.
+Cited by:
+§1
+.
+Unitree (2025)
+Unitree
+UnifoLM-wma-0: a world-model-action (wma) framework under unifolm family
+.
+Cited by:
+§1
+.
+Wan
+et al.
+(2025)
+T. Wan, A. Wang, B. Ai, B. Wen, C. Mao, C. Xie, D. Chen, F. Yu, H. Zhao, J. Yang, J. Zeng, J. Wang, J. Zhang, J. Zhou, J. Wang, J. Chen, K. Zhu, K. Zhao, K. Yan, L. Huang, M. Feng, N. Zhang, P. Li, P. Wu, R. Chu, R. Feng, S. Zhang, S. Sun, T. Fang, T. Wang, T. Gui, T. Weng, T. Shen, W. Lin, W. Wang, W. Wang, W. Zhou, W. Wang, W. Shen, W. Yu, X. Shi, X. Huang, X. Xu, Y. Kou, Y. Lv, Y. Li, Y. Liu, Y. Wang, Y. Zhang, Y. Huang, Y. Li, Y. Wu, Y. Liu, Y. Pan, Y. Zheng, Y. Hong, Y. Shi, Y. Feng, Z. Jiang, Z. Han, Z. Wu, and Z. Liu
+Wan: open and advanced large-scale video generative models
+.
+arXiv preprint arXiv:2503.20314
+.
+Cited by:
+§1
+,
+§2.1
+.
+Wang
+et al.
+(2025)
+Y. Wang, M. Verghese, and J. Schneider
+Latent policy steering with embodiment-agnostic pretrained world models
+.
+arXiv preprint arXiv:2507.13340
+.
+Cited by:
+§1
+,
+§2.2
+.
+Yang
+et al.
+(2023)
+Z. Yang, Y. Chen, J. Wang, S. Manivasagam, W. Ma, A. J. Yang, and R. Urtasun
+Unisim: a neural closed-loop sensor simulator
+.
+In
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition
+,
+pp. 1389–1399
+.
+Cited by:
+§2.2
+.
+Ye
+et al.
+(2024)
+S. Ye, J. Jang, B. Jeon, S. Joo, J. Yang, B. Peng, A. Mandlekar, R. Tan, Y. Chao, B. Y. Lin,
+et al.
+Latent action pretraining from videos
+.
+arXiv preprint arXiv:2410.11758
+.
+Cited by:
+§2.2
+.
+Zhao
+et al.
+(2025)
+Z. Zhao, L. Yu, K. Jing, and N. Yang
+XRoboToolkit: a cross-platform framework for robot teleoperation
+.
+arXiv preprint arXiv:2508.00097
+.
+Cited by:
+Figure 9
+,
+§A.3
+.
+Zheng
+et al.
+(2025)
+R. Zheng, J. Wang, S. Reed, J. Bjorck, Y. Fang, F. Hu, J. Jang, K. Kundalia, Z. Lin, L. Magne,
+et al.
+FLARE: robot learning with implicit world modeling
+.
+arXiv preprint arXiv:2505.15659
+.
+Cited by:
+Figure 1
+,
+§1
+,
+§3
+.
+Zheng
+et al.
+(2024)
+Z. Zheng, X. Peng, T. Yang, C. Shen, S. Li, H. Liu, Y. Zhou, T. Li, and Y. You
+Open-sora: democratizing efficient video production for all
+.
+arXiv preprint arXiv:2412.20404
+.
+Cited by:
+§2.1
+.
+Zhong
+et al.
+(2025)
+Z. Zhong, H. Yan, J. Li, X. Liu, X. Gong, W. Song, J. Chen, and H. Li
+FlowVLA: thinking in motion with a visual chain of thought
+.
+arXiv preprint arXiv:2508.18269
+.
+Cited by:
+§2.2
+.
+Appendix A
+Appendix
+A.1
+Model & Training Configurations
+Parameter
+Value
+Video DiT
+Base VGM
+Cosmos-Predict2.5-2B
+(
+Ali et al., 2025
+)
+Attention Implementation
+flash_attention_2
+Hidden Feature Dim
+2048
+Extract Layer
+18
+Action DiT
+Action Model Type
+DiT-B
+Hidden Size
+2560
+Add Positional Embedding
+True
+Max Sequence Length
+1024
+Action Dim
+32
+State Dim
+64
+Future Action Window Size
+15
+Action Horizon
+16
+Past Action Window Size
+0
+Cross Attention Dim
+2048
+Dropout
+0.2
+Final Dropout
+True
+Interleave Self Attention
+True
+Norm Type
+AdaLN
+Num Layers
+16
+Output Dim
+2560
+Repeated Diffusion Steps (train)
+4
+Noise
+β
+\beta
+(
+α
+\alpha
+)
+1.5
+Noise
+β
+\beta
+(
+β
+\beta
+)
+1.0
+Noise
+s
+s
+0.999
+Num Timestep Buckets
+1000
+Num Inference Timesteps
+4
+Training Configurations
+Per Device Batch Size
+8
+Num of GPUs
+32
+Max Train Steps
+100000
+Num Warmup Steps
+5000
+Warmup Ratio
+0.1
+VGM LR
+1
+×
+10
+−
+5
+1\times 10^{-5}
+Action Model LR
+1
+×
+10
+−
+4
+1\times 10^{-4}
+LR Scheduler
+cosine_with_min_lr
+Min LR
+5
+×
+10
+−
+7
+5\times 10^{-7}
+Gradient Clipping
+1.0
+Gradient Accumulation Steps
+1
+Optimizer
+AdamW
+β
+1
+,
+β
+2
+\beta_{1},\beta_{2}
+(
+0.9
+,
+0.95
+)
+(0.9,0.95)
+ϵ
+\epsilon
+1
+×
+10
+−
+8
+1\times 10^{-8}
+Weight Decay
+1
+×
+10
+−
+8
+1\times 10^{-8}
+Table 4:
+Model & training configurations
+A.2
+Dataset Configuration
+We detail the composition and configuration of the datasets used to train and evaluate the DiT4DiT framework, as summarized in Table
+5
+. To rigorously assess both fundamental learning capabilities and physical deployability, our dataset usage is strategically partitioned into two distinct pipelines: one for simulated benchmark evaluation and another for real-world deployment.
+Simulated benchmark data
+: To evaluate our framework in simulated environments, we train the models directly on the target datasets. For the RoboCasa-GR1
+(
+Nasiriany et al., 2024
+)
+tabletop tasks, we utilize the Fourier_GR1_Unified_1K dataset
+(
+Bjorck et al., 2025
+)
+, which consists of 24,000 demonstration episodes collected using the highly complex 29-DoF GR1 humanoid embodiment. For the LIBERO
+(
+Liu et al., 2024
+)
+benchmark, we use its official dataset comprising 1,693 episodes based on a 7-DoF Franka Emika Panda robotic arm. Training from scratch on these datasets ensures a strictly fair evaluation against baseline methods in simulation as we do not have access to all pre-training datasets of various methods.
+Pre-training data for real-world tasks
+: To facilitate robust physical deployment, DiT4DiT undergoes a crucial pre-training phase to acquire fundamental spatiotemporal and physical priors. For this stage, we utilize the scaled Fourier_GR1_Pretrain_10K dataset
+(
+Bjorck et al., 2025
+)
+, comprising 241,450 episodes of the 29-DoF GR1 embodiment. As highlighted in our main text, this pre-training corpus represents merely
+15%
+of the massive data volume leveraged by baselines like GR00T-N1.5, heavily emphasizing the data efficiency of our generative video backbone.
+Real-world fine-tuning data
+: Following pre-training, the model is fine-tuned to adapt its generative priors to the target physical robot. For this stage, we employ our custom real-robot dataset, consisting of 1,400 high-quality, teleoperated demonstration episodes (200 episodes for each task). This dataset is specifically tailored for the Unitree G1 humanoid robot, operating with a continuous 16-DoF action space. This crucial fine-tuning phase successfully grounds the broad simulation-based physical dynamics into precise, real-world continuous control commands.
+Dataset
+Episode Cnt
+Embodiment
+DoF
+Fourier_GR1_Unified_1K
+(
+Bjorck et al., 2025
+)
+24,000
+GR1 humanoid
+29
+Fourier_GR1_Pretrain_10K
+(
+Bjorck et al., 2025
+)
+241,450
+GR1 humanoid
+29
+LIBERO
+(
+Liu et al., 2024
+)
+1,693
+Franka Emika Panda
+7
+Real Robot
+1,400
+G1 humanoid
+16
+Table 5:
+Details of the used datasets
+. We report the episode count, embodiment type, and degrees of freedom.
+A.3
+Real-world Experiment Setting
+Figure 9:
+Visualization of the robot system setups.
+The experimental platform consists of a Unitree G1 humanoid robot equipped with dual ALOHA 2
+(
+Aldaco et al., 2024
+)
+grippers and an Intel RealSense D435i camera. A human operator utilizes a PICO VR headset and the XRoboToolkit
+(
+Zhao et al., 2025
+)
+framework to perform teleoperated demonstrations for high-quality data collection.
+As shown in fig.
+9
+, our real-world experimental system is built upon the Unitree G1 humanoid robot, featuring a 16-DoF action space driven by dual 7-DoF arms. Each arm is equipped with an ALOHA 2
+(
+Aldaco et al., 2024
+)
+gripper to facilitate high-precision bimanual manipulation. For visual perception, an Intel RealSense D435i camera is mounted on the robot’s head to capture ego-centric RGB observations at a resolution of 640x480. The real-time inference is executed on a workstation with a single NVIDIA GeForce RTX 4090 GPU.
+Data collection is performed via a VR-based teleoperation pipeline using a PICO VR headset and handheld controllers. This setup allows a human operator to provide natural demonstrations by mapping motion directly to the robot’s joints. The XRoboToolkit
+(
+Zhao et al., 2025
+)
+framework manages the entire software stack, ensuring precise synchronization of multimodal sensor data and high-quality recording of demonstration trajectories. This integrated environment supports a seamless transition from human-led data collection to autonomous policy deployment.
+A.4
+Limitations and Discussion
+While DiT4DiT demonstrates exceptional capabilities in bridging generative video priors and continuous robotic control, limitations present exciting avenues for future research.
+Our current physical deployment relies exclusively on a single egocentric (ego-view) camera. While this highlights the remarkable spatial reasoning capabilities of our video representations, single-view setups are fundamentally susceptible to severe visual occlusions. In complex bimanual tasks, the robot’s own arms or larger objects can temporarily block the camera’s line of sight, potentially disrupting the temporal continuity of the visual features. Future iterations could explore the integration of auxiliary sensory inputs, such as wrist-mounted cameras or tactile feedback, fusing these modalities with the video DiT backbone to maintain robust state estimation during severe occlusions.
+Our real-world experiments achieved state-of-the-art zero-shot generalization using a pre-training corpus that represents merely 15% of the data volume utilized by contemporary large-scale models like GR00T. A natural and promising next step is to drastically scale the pre-training data across diverse robotic embodiments (e.g., varying kinematics, grippers, and camera parameters). Given the data-efficient nature of our dual flow-matching objective, scaling DiT4DiT with massive, cross-embodiment datasets could yield a highly generalized robotic foundation model, further solidifying video generation as the optimal scaling proxy for embodied intelligence.
+Figure 10:
+Future video rollouts generated by DiT4DiT.
+Experimental support, please
+view the build logs
+for errors. Generated by
+L
+A
+T
+E
+xml
+.
+Instructions for reporting errors
+We are continuing to improve HTML versions of papers, and your feedback helps enhance accessibility and mobile
+      support. To report errors in the HTML that will help us improve conversion and rendering, choose any of the
+      methods listed below:
+Click the "Report Issue"
+(
+)
+button, located in the page header.
+Tip:
+You can select the relevant text first, to include it in your report.
+Our team has already identified
+the following issues
+. We appreciate your time reviewing and reporting rendering errors we
+      may not have found yet. Your efforts will help us improve the HTML versions for all readers, because disability
+      should not be a barrier to accessing research. Thank you for your continued support in championing open access for
+      all.
+Have a free development cycle? Help support accessibility at arXiv! Our collaborators at LaTeXML maintain a
+list of packages that need conversion
+, and welcome
+developer contributions
+.
+We gratefully acknowledge support from
+        our
+major funders
+,
+member institutions
+,
+,
+        and all contributors.
+About
+·
+Help
+·
+Contact
+·
+Subscribe
+·
+Copyright
+·
+Privacy
+·
+Accessibility
+·
+Operational Status
+(opens in new tab)
+Major funding support from
