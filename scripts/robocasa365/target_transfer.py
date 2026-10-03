@@ -4,6 +4,15 @@ import json
 from pathlib import Path
 
 
+def target_task_set(task, registry):
+    """Resolve all three official target groups and reject ambiguous membership."""
+    groups = ('atomic_seen', 'composite_seen', 'composite_unseen')
+    matches = [group for group in groups if task in registry.get(group, ())]
+    if len(matches) != 1:
+        raise ValueError(f'Expected one official target group for {task}, got {matches}')
+    return matches[0]
+
+
 def validate_transfer_manifest(manifest, training_manifest, training_split):
     training_manifest = Path(training_manifest)
     digest = hashlib.sha256(training_manifest.read_bytes()).hexdigest()

@@ -8,6 +8,7 @@ import imageio.v2 as imageio
 import gymnasium as gym
 import robocasa
 from robocasa.utils.dataset_registry import TARGET_TASKS, get_ds_meta
+from scripts.robocasa365.target_transfer import target_task_set
 from scripts.robocasa365.eval_protocol import observation_arrays,action_dict,expected_env_action,verify_controller_contract
 from scripts.robocasa365.scene_protocol import OFFICIAL, PROTOCOLS, apply_scene_protocol, protocol_spec
 
@@ -28,7 +29,7 @@ if a.no_render:
         kwargs.update(has_renderer=False, has_offscreen_renderer=False, use_camera_obs=False)
         return original_make(*positional, **kwargs)
     env_utils.robosuite.make=cpu_make
-task_set=next((name for name in ['composite_seen','atomic_seen'] if a.task in TARGET_TASKS[name]),None)
+task_set=target_task_set(a.task,TARGET_TASKS)
 assert task_set is not None
 meta = get_ds_meta(task=a.task, split='target', source='human')
 env = gym.make(f'robocasa/{a.task}', split='target', seed=0,

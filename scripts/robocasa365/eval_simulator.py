@@ -10,6 +10,7 @@ import imageio.v2 as imageio
 import gymnasium as gym
 import robocasa
 from robocasa.utils.dataset_registry import TARGET_TASKS,get_ds_meta
+from scripts.robocasa365.target_transfer import target_task_set
 from scripts.robocasa365.eval_protocol import pack,unpack,observation_arrays,action_dict,CAMERAS,expected_env_action,verify_controller_contract
 from scripts.robocasa365.scene_protocol import OFFICIAL, STABLE, PROTOCOLS, protocol_spec, apply_scene_protocol
 
@@ -28,8 +29,7 @@ def main():
     if a.scene_protocol==STABLE and a.demo_episodes:
         raise ValueError('stable_counter_v1 is for fresh scenes, not restored demo diagnostics')
     scene_runtime=apply_scene_protocol(a.scene_protocol)
-    task_set=next((name for name in ['composite_seen','atomic_seen'] if a.task in TARGET_TASKS[name]),None)
-    assert task_set is not None, 'Task must belong to a supported official target set'
+    task_set=target_task_set(a.task,TARGET_TASKS)
     official_horizon=get_ds_meta(task=a.task,split='target',source='human')['horizon']
     horizon=min(a.max_steps or official_horizon,official_horizon)
     trials=list(enumerate(a.seeds)) if not a.demo_episodes else list(enumerate(a.demo_episodes))

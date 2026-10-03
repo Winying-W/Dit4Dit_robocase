@@ -5,10 +5,19 @@ from types import SimpleNamespace
 import tempfile
 import unittest
 
-from scripts.robocasa365.target_transfer import transfer_probe_split, validate_transfer_manifest
+from scripts.robocasa365.target_transfer import target_task_set, transfer_probe_split, validate_transfer_manifest
 
 
 class TargetTransferTest(unittest.TestCase):
+    def test_target_groups_include_unseen_composites(self):
+        registry = dict(atomic_seen=['Atomic'], composite_seen=['Seen'], composite_unseen=['Unseen'])
+        for group, tasks in registry.items():
+            self.assertEqual(target_task_set(tasks[0], registry), group)
+        with self.assertRaises(ValueError):
+            target_task_set('PretrainOnly', registry)
+        with self.assertRaises(ValueError):
+            target_task_set('Seen', {**registry, 'composite_unseen': ['Seen']})
+
     def test_transfer_is_bound_to_training_manifest_and_normalization(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'manifest.json'
