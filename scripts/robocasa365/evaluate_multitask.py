@@ -53,7 +53,7 @@ def summarize(task_reports, planned_tasks, seeds, purpose='final', task_set='com
         pooled_success_rate=successes/completed if complete else None,
         equal_task_macro_success_rate=sum(row['successes']/len(seeds) for row in task_reports)/len(planned_tasks) if complete else None,
         pooled_wilson_95=wilson(successes,completed) if complete else None,
-        uncertainty_note='Wilson intervals describe these trials. Fixed equal trials per task make pooled and macro point estimates equal; this is not a result on unseen tasks or all 365 tasks.',
+        uncertainty_note='Wilson intervals describe these trials. Fixed equal trials per task make pooled and macro point estimates equal; these results apply to the explicitly declared task set, not all 365 tasks.',
         scope='Fresh target Gym resets, full official horizons, learned policy commands, official success checker. GT/demo-init excluded; infrastructure failures retained separately. '+('Development seeds only; excluded from the final result.' if purpose=='development' else 'Final seeds only; development trials excluded.'))
 
 
@@ -86,6 +86,7 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument('--checkpoint',type=Path,required=True)
     p.add_argument('--manifest',type=Path,required=True)
+    p.add_argument('--transfer-evaluation',action='store_true',help='Evaluate human300 policy on a separate target50 manifest')
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--sim-python',required=True)
     p.add_argument('--workers',type=int,choices=[1,4],default=1,help='One serial GPU or four independent GPU policy workers')
@@ -103,14 +104,19 @@ def main():
 def run(a,lock_fd):
     manifest=json.loads(a.manifest.read_text())
     split=json.loads((a.checkpoint.parent/'split.json').read_text())
-    assert split['manifest_sha256']==hashlib.sha256(a.manifest.read_bytes()).hexdigest()
+    transfer=getattr(a,'transfer_evaluation',False)
+    if transfer:
+        from scripts.robocasa365.target_transfer import validate_transfer_manifest
+        validate_transfer_manifest(manifest,a.checkpoint.parent/'dataset_manifest.json',split)
+    else:
+        assert split['manifest_sha256']==hashlib.sha256(a.manifest.read_bytes()).hexdigest()
     tasks,task_scope=select_evaluation_tasks(manifest,getattr(a,'tasks',None),
         development=a.development,allow_subset=a.allow_task_subset)
     planned_tasks=[row['task'] for row in tasks]
     assert len(planned_tasks)>0 and len(set(planned_tasks))==len(planned_tasks)
     if not a.allow_task_subset:
         assert manifest.get('task_scope','full_official_task_set')=='full_official_task_set'
-        expected_count={'composite_seen':16,'atomic_seen':18}[manifest['task_set']]
+        expected_count={'composite_seen':16,'atomic_seen':18,'target50':50}[manifest['task_set']]
         assert len(planned_tasks)==expected_count
     final_seeds=manifest['evaluation']['seeds']
     selection_seeds=manifest['evaluation']['selection_seeds']
@@ -121,11 +127,14 @@ def run(a,lock_fd):
     stats=json.loads((a.checkpoint.parent/'normalization.json').read_text())
     reports=[]
     config=json.loads((a.checkpoint.parent/'run_config.json').read_text())
-    artifacts=policy_identity(a.checkpoint,config['base_checkpoint'])
-    identity=dict(policy_artifacts=artifacts,checkpoint=str(a.checkpoint.resolve()),manifest_sha256=split['manifest_sha256'],
+    artifacts=policy_identity(a.checkpoint,config.get('base_checkpoint'))
+    identity=dict(policy_artifacts=artifacts,checkpoint=str(a.checkpoint.resolve()),manifest_sha256=hashlib.sha256(a.manifest.read_bytes()).hexdigest(),
                   seeds=seeds,tasks=planned_tasks,execute_horizon=8,purpose=purpose,
                   task_set=manifest['task_set'],task_scope=task_scope,
                   scene_protocol=protocol_spec(a.scene_protocol))
+    if transfer:
+        identity['training_manifest_sha256']=split['manifest_sha256']
+        identity['transfer_evaluation']=True
     identity_path=a.output/'identity.json'
     if identity_path.exists():
         previous=json.loads(identity_path.read_text())
@@ -155,7 +164,14 @@ def run(a,lock_fd):
     def collect(row):
         by_task[row['task']]=row
         ordered=[by_task[name] for name in planned_tasks if name in by_task]
-        save(a.output/'report.json',summarize(ordered,planned_tasks,seeds,purpose,manifest['task_set'],identity['task_scope']))
+        report=summarize(ordered,planned_tasks,seeds,purpose,manifest['task_set'],identity['task_scope'])
+        if transfer:
+            groups={task['task']:task['group'] for task in tasks}
+            report['groups']={group:summarize([r for r in ordered if groups[r['task']]==group],
+                [name for name in planned_tasks if groups[name]==group],seeds,purpose,group,identity['task_scope'])
+                for group in sorted(set(groups.values()))}
+            report['transfer_evaluation']=True
+        save(a.output/'report.json',report)
         print('MULTITASK_EVAL',row['task'],row['successes'],row['completed_trials'],flush=True)
     if workers==1:
         for task in tasks:collect(work(task))
@@ -195,6 +211,7 @@ def evaluate_task(a,task,seeds,stats,artifacts,lock_fd,environment):
                  '--checkpoint',str(a.checkpoint),'--dataset',task['path'],'--task',task['task'],
                  '--output',str(folder),'--sim-python',a.sim_python,'--execute-horizon','8',
                  '--scene-protocol',a.scene_protocol,'--seeds',*map(str,pending)]
+            if getattr(a,'transfer_evaluation',False):cmd.append('--transfer-evaluation')
             with (folder/'driver.log').open('w') as logfile:
                 code=subprocess.run(cmd,stdout=logfile,stderr=subprocess.STDOUT,pass_fds=(lock_fd,),env=environment).returncode
             save(folder/'process.json',dict(returncode=code,command=cmd))

@@ -41,6 +41,7 @@ def prepare_multitask_dataset(manifest_path, output):
         max_state_dim=64, max_action_dim=32, image_size=[128,128], video_delta_indices=list(range(17)),
         action_video_freq_ratio=2, video_backend='decord', lerobot_version='v2.0',
         statistics_path=str((output/'normalization.json').resolve())))
+    cfg = OmegaConf.merge(cfg, manifest.get('data_config', {}))
     datasets, training, validation, task_splits = [], [], [], []
     for task_id, row in enumerate(manifest['tasks']):
         path = Path(row['path'])
@@ -48,6 +49,8 @@ def prepare_multitask_dataset(manifest_path, output):
         ds = Robocasa365DatasetAdapter(path, local_cfg)
         apply_statistics(ds, path, stats)
         train_set, val_set = set(row['train_episodes']), set(row['validation_episodes'])
+        excluded_set = set(row.get("excluded_episodes", []))
+        assert excluded_set.isdisjoint(train_set | val_set)
         assert train_set.isdisjoint(val_set)
         train_idx, by_val_ep = [], {}
         observed_episodes = set()
@@ -59,7 +62,7 @@ def prepare_multitask_dataset(manifest_path, output):
                 length = ds.dataset.trajectory_lengths[ds.dataset.get_trajectory_index(ep)]
                 if t + 16 < length:
                     by_val_ep.setdefault(ep, []).append(idx)
-        assert observed_episodes == train_set | val_set, row['task']
+        assert observed_episodes == train_set | val_set | excluded_set, row['task']
         assert set(by_val_ep) == val_set, row['task']
         # Two deterministic windows from each of four held-out episodes per task.
         # All held-out episodes remain excluded from training/statistics.
@@ -68,7 +71,7 @@ def prepare_multitask_dataset(manifest_path, output):
             indices = by_val_ep[ep]
             val_idx.extend([indices[len(indices)//3], indices[2*len(indices)//3]])
         task_splits.append(dict(task=row['task'], path=str(path), train_episodes=row['train_episodes'],
-            validation_episodes=row['validation_episodes'], validation_indices=val_idx,
+            validation_episodes=row['validation_episodes'], excluded_episodes=sorted(excluded_set), validation_indices=val_idx,
             train_frames=len(train_idx)))
         validation.extend([[task_id, idx] for idx in val_idx])
         training.append(np.asarray(train_idx, dtype=np.int64)); datasets.append(ds)

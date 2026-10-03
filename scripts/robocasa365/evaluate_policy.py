@@ -37,13 +37,16 @@ def main():
     p.add_argument('--max-steps',type=int,help='Smoke only; omit for the official 2400-step horizon')
     p.add_argument('--demo-episodes',nargs='+',type=int,help='Diagnostic held-out demo initializations; distinct from fresh target trials')
     p.add_argument('--validation-only',action='store_true')
+    p.add_argument('--transfer-evaluation',action='store_true',help='Use target demonstration only for interface checks; keep human300 normalization')
     p.add_argument('--probe-episode',type=int,help='Offline prediction diagnostics on this episode; explicitly not held-out success')
     p.add_argument('--probe-windows',type=int,default=64)
     p.add_argument('--scene-protocol',choices=PROTOCOLS,default=OFFICIAL)
     a=p.parse_args();a.output.mkdir(parents=True,exist_ok=True)
+    if a.transfer_evaluation and (a.demo_episodes or a.probe_episode is not None):
+        raise ValueError('Transfer evaluation uses fresh target resets; separate demo diagnostics')
     if a.scene_protocol==STABLE and a.demo_episodes:
         raise ValueError('stable_counter_v1 is for fresh scenes, not restored demo diagnostics')
-    sources=['scripts/robocasa365/evaluate_policy.py','scripts/robocasa365/eval_simulator.py','scripts/robocasa365/eval_protocol.py','scripts/robocasa365/action_audit.py','scripts/robocasa365/artifact_identity.py','scripts/robocasa365/scene_protocol.py']
+    sources=['scripts/robocasa365/evaluate_policy.py','scripts/robocasa365/eval_simulator.py','scripts/robocasa365/eval_protocol.py','scripts/robocasa365/action_audit.py','scripts/robocasa365/artifact_identity.py','scripts/robocasa365/scene_protocol.py','scripts/robocasa365/human300_checkpoint.py','scripts/robocasa365/target_transfer.py']
     sources.append('scripts/robocasa365/video_precision.py')
     if a.probe_episode is not None:sources.append('scripts/robocasa365/prediction_metrics.py')
     (a.output/'source_hashes.json').write_text(json.dumps({name:hashlib.sha256(Path(name).read_bytes()).hexdigest() for name in sources},indent=2)+'\n')
@@ -52,18 +55,26 @@ def main():
     if not 1<=a.execute_horizon<=16:raise ValueError('execute_horizon must be in [1,16]')
     print('EVAL_STAGE loading_incremental_checkpoint',str(a.checkpoint),flush=True)
     run_config=json.loads((a.checkpoint.parent/'run_config.json').read_text())
-    artifacts=policy_identity(a.checkpoint,run_config['base_checkpoint'])
-    payload=torch.load(a.checkpoint,map_location='cpu',weights_only=False)
-    assert str(Path(payload['base_checkpoint']).resolve())==artifacts['base_weights']['path']
+    artifacts=policy_identity(a.checkpoint,run_config.get('base_checkpoint'))
+    payload=torch.load(a.checkpoint,map_location='cpu',weights_only=False,mmap=True)
     cfg=OmegaConf.load(a.checkpoint.parent/'data_config.yaml')
     stats=json.loads((a.checkpoint.parent/'normalization.json').read_text())
-    model=baseframework.from_pretrained(payload['base_checkpoint'])
-    from scripts.robocasa365.video_precision import apply_saved_video_precision
-    selected_video_precision=apply_saved_video_precision(model,payload)
-    print('EVAL_STAGE base_checkpoint_loaded',flush=True)
-    expected={name for name,_ in model.named_parameters() if name.startswith('action_model.')}
-    assert expected.issubset(payload['trained_state']), 'Incomplete Action DiT checkpoint'
-    result=model.load_state_dict(payload['trained_state'],strict=False);assert not result.unexpected_keys
+    if 'schedule' in run_config and run_config['schedule'].get('phase') == 'joint':
+        from scripts.robocasa365.human300_checkpoint import load_checkpoint
+        model,model_config,stats,_=load_checkpoint(a.checkpoint,device='cpu')
+        payload['global_step']=payload['step']
+        payload['phase']='joint'
+        payload['base_checkpoint']=str(model_config.framework.cosmos25.base_model)
+        selected_video_precision='float32'
+    else:
+        assert str(Path(payload['base_checkpoint']).resolve())==artifacts['base_weights']['path']
+        model=baseframework.from_pretrained(payload['base_checkpoint'])
+        from scripts.robocasa365.video_precision import apply_saved_video_precision
+        selected_video_precision=apply_saved_video_precision(model,payload)
+        print('EVAL_STAGE base_checkpoint_loaded',flush=True)
+        expected={name for name,_ in model.named_parameters() if name.startswith('action_model.')}
+        assert expected.issubset(payload['trained_state']), 'Incomplete Action DiT checkpoint'
+        result=model.load_state_dict(payload['trained_state'],strict=False);assert not result.unexpected_keys
     model.backbone_interface.extractor.text_encoder.to(torch.bfloat16)
     model.requires_grad_(False);model=model.to('cuda').eval()
     model.config.datasets.vla_data=cfg
@@ -80,7 +91,13 @@ def main():
     print('EVAL_STAGE auditing_actions',flush=True)
     split=payload['split']
     multitask='tasks' in split
-    if multitask:
+    if a.transfer_evaluation:
+        if run_config.get('schedule', {}).get('phase') != 'joint':
+            raise ValueError('Target transfer requires a human300 joint checkpoint')
+        from scripts.robocasa365.target_transfer import transfer_probe_split
+        split=transfer_probe_split(ds,a.dataset,a.task)
+        multitask=True
+    elif multitask:
         split=next(row for row in split['tasks'] if row['task']==a.task)
         assert Path(split['path']).resolve()==a.dataset.resolve(), 'Task/dataset mismatch'
     else:
@@ -111,9 +128,10 @@ def main():
         selected_video_parameter_precision=selected_video_precision,
         trained_tensor_count=len(payload['trained_state']),architecture=dict(framework=type(model).__name__,action_module=type(model.action_model).__name__,
             video_transformer=type(model.backbone_interface.extractor.transformer).__name__,text_encoder=type(model.backbone_interface.extractor.text_encoder).__name__),inference_timesteps=model.action_model.num_inference_timesteps,
+        transfer_evaluation=a.transfer_evaluation,offline_probe_scope=split.get('scope','Held-out training-task episodes'),
         validation_action_fm_loss=float(np.mean(losses)),prediction_shape=list(pred.shape),inverse_normalization_passed=True,
         image_size=list(cfg.image_size),execute_horizon=a.execute_horizon,seeds=a.seeds,scene_protocol=protocol_spec(a.scene_protocol),
-        protocol='Fresh gym target reset, three 256x256 RGB observations -> same-time 128x384 mosaic; full action schema; official Gym binary thresholds; continuous commands clipped to [-1,1].',
+        protocol=f'Fresh gym target reset, three 256x256 RGB observations -> same-time {cfg.image_size[0]}x{3*cfg.image_size[1]} mosaic; full action schema; official Gym binary thresholds; continuous commands clipped to [-1,1].',
         demo_episodes=a.demo_episodes,max_steps_override=a.max_steps,warm_start=payload.get('warm_start'))
     (a.output/'checkpoint_verification.json').write_text(json.dumps(report,indent=2)+'\n')
     np.savez_compressed(a.output/'prediction_preflight.npz',normalized=pred,decoded_dataset_order=decoded)

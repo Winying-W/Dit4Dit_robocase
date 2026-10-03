@@ -1,0 +1,99 @@
+datasets:
+  vla_data:
+    action_video_freq_ratio: 2
+    max_state_dim: 64
+    max_action_dim: 32
+    data_mix: pretrain_human300
+    data_root_dir: /mnt/workspace/Jensen/project/robocasa365/extracted
+    dataset_py: robocasa365_datasets
+    delete_pause_frame: false
+    image_size:
+    - 224
+    - 224
+    per_device_batch_size: 1
+    video_delta_indices:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+framework:
+  action_model:
+    action_dim: 32
+    action_horizon: 16
+    action_model_type: DiT-B
+    add_pos_embed: true
+    diffusion_model_cfg:
+      cross_attention_dim: 2048
+      dropout: 0.2
+      final_dropout: true
+      interleave_self_attention: true
+      norm_type: ada_norm
+      num_layers: 16
+      output_dim: 2560
+      positional_embeddings: null
+    future_action_window_size: 15
+    hidden_size: 2560
+    max_seq_len: 1024
+    noise_beta_alpha: 1.5
+    noise_beta_beta: 1.0
+    noise_s: 0.999
+    num_inference_timesteps: 4
+    num_timestep_buckets: 1000
+    past_action_window_size: 0
+    state_dim: 64
+  cosmos25:
+    base_model: /mnt/workspace/Jensen/project/Dit4Dit_robocase/checkpoints/Cosmos-Predict2.5-2B-human300
+    conditional_frame_timestep: 0.0001
+    extract_layer: 17
+    flow_matching:
+      high_sigma_min: null
+      high_sigma_ratio: null
+      time_distribution: uniform
+    future_loss_type: flow_matching
+    future_num_inference_steps: 1
+    training: joint
+    vl_hidden_dim: 2048
+  name: DiT4DiT
+output_dir: ./runs/robocasa365_human300_10k
+run_id: robocasa365_human300_10k
+run_root_dir: ./runs
+seed: 42
+trainer:
+  eval_interval: 1000
+  freeze_modules: backbone_interface.extractor.text_encoder,backbone_interface.extractor.vae
+  gradient_accumulation_steps: 16
+  gradient_clipping: 1.0
+  is_resume: false
+  learning_rate:
+    action_model: 0.0001
+    backbone_interface: 1.0e-05
+    base: 3.0e-05
+  logging_frequency: 10
+  lr_scheduler_type: cosine_with_min_lr
+  max_train_steps: 10000
+  num_warmup_steps: 500
+  optimizer:
+    betas:
+    - 0.9
+    - 0.95
+    eps: 1.0e-08
+    weight_decay: 1.0e-08
+  repeated_diffusion_steps: 1
+  save_interval: 2000
+  scheduler_specific_kwargs:
+    min_lr_ratio: 0.1
+  pretrained_checkpoint: null
+wandb_project: DiT4DiT_robocasa
