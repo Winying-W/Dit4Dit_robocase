@@ -1,6 +1,0 @@
-name: dit4dit
-channels:
-  - conda-forge
-dependencies:
-  - python=3.10.20
-  - pip=25.0.1

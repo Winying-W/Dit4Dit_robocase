@@ -1,0 +1,18 @@
+{
+ "passed": true,
+ "tensors": 247,
+ "parameters": 163276320,
+ "tensors_equal_to_gr1": [],
+ "gr1_cosmos_side_tensors": 1492,
+ "fresh_head_sha256": "64b052c40235edbc11fa17ccaef27f8d28d6f236123add15996f70d2bc9beff8",
+ "gr1_head_sha256": "5e68f84b2fdff757bec926006d6afdb6ae3a511400f31cc7c229584f462d7de6",
+ "dims": {
+  "action": 32,
+  "state": 64,
+  "horizon": 16
+ },
+ "image_size": [
+  224,
+  224
+ ]
+}

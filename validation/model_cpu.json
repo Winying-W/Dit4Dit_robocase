@@ -1,0 +1,20 @@
+{
+  "passed": true,
+  "scope": "CPU action-path only; no video-loss training, optimizer, CUDA, NCCL or simulator",
+  "results": {
+    "baseline": {
+      "loss": 0.55859375,
+      "trainable_tensors": 247,
+      "seconds": 220.40046252915636,
+      "all_gradients_finite": true,
+      "backbone_frozen": true
+    },
+    "concat": {
+      "loss": 1.265625,
+      "trainable_tensors": 251,
+      "seconds": 209.0317422724329,
+      "all_gradients_finite": true,
+      "backbone_frozen": true
+    }
+  }
+}

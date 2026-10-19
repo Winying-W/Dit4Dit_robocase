@@ -1,289 +1,137 @@
-<div align="center">
+# DiT4DiT / Qwen concat on RoboCasa365 Atomic18
 
-  <img src="media/logo.svg" width="480" alt="DiT4DiT">
+两套可独立启动的实验代码，用于迁移到普通 Linux GPU 服务器。
 
-  <h2>Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control</h2>
+| 目录 | Cosmos 初始化 | Action head 初始化 | Qwen |
+|---|---|---|---|
+| `experiments/robocasa_official_recipe` | 官方 GR1 | 官方 GR1 | 不接入 |
+| `experiments/concat_random_head` | 官方 GR1 | 随机，seed 42 | 冻结 Qwen3-VL-4B-Instruct，LN + Linear 后拼接 |
 
-</div>
+两个目录各自带有完整 `source/`，源码保持一致，入口严格区分配置。这里的 concat 指 C 组；不包含旧的 128/repeat-1 A/B 实验和云平台调度代码。
+**基线 vs concat 同时改变 head 初始化和 Qwen，不能把差异全部归因于 Qwen。**
 
-<div align="center">
+共同配方：每视角 224×224，三视角横拼 224×672；9 个视频帧；action/state/horizon=32/64/16，真实 action 12 维；repeat=4；4 GPU，global batch=128；Cosmos video DiT 用 video loss 更新，LR=1e-5；action head/projector LR=1e-4；action 梯度不进入 Cosmos；VAE/text/Qwen 冻结；HF cosine_with_min_lr，warmup 为总步数 2.5%，末端比例 1/60；官方每 microbatch masked mean loss；评估每次执行 8 步。
 
-[![arXiv](https://img.shields.io/badge/arXiv-2603.10448-FF5500.svg)](https://arxiv.org/abs/2603.10448)
-[![Project Page](https://img.shields.io/badge/Project-Page-FF8C00.svg)](https://dit4dit.github.io/)
-[![License](https://img.shields.io/badge/License-MIT-FF8C00.svg)](LICENSE)
+## 1. 安装训练环境
 
-</div>
-
-<div align="center">
-
-[Teli Ma](https://teleema.github.io/)<sup>1,2</sup> &nbsp;&nbsp;
-[Jia Zheng](https://jiaazheng.github.io/)<sup>1,2</sup> &nbsp;&nbsp;
-[Zifan Wang](https://scholar.google.com/citations?user=GaJXZ-UAAAAJ&hl=en)<sup>1,2</sup> &nbsp;&nbsp;
-[Chunli Jiang](https://scholar.google.com/citations?user=nvzF-RMAAAAJ&hl=en)<sup>1</sup> &nbsp;&nbsp;
-Andy Cui<sup>1</sup> &nbsp;&nbsp;
-[Junwei Liang](https://junweiliang.me/index.html)<sup>2,3,\*</sup> &nbsp;&nbsp;
-[Shuo Yang](https://shuoyangrobotics.github.io/)<sup>1,\*</sup>
-
-<sup>1</sup>Mondo Robotics &nbsp;&nbsp; <sup>2</sup>HKUST(GZ) &nbsp;&nbsp; <sup>3</sup>HKUST &nbsp;&nbsp; <sup>\*</sup>Corresponding author
-
-</div>
-
----
-
-DiT4DiT is a <b><span style="color: #FF8C00;">Vision-Action-Model (VAM)</span></b> framework that combines video generation transformers with flow-matching-based action prediction for generalizable robotic manipulation. It supports both the tabletop and whole-body control for manipulation tasks. Notably, DiT4DiT stands as the <b>first</b> efficient VAM to achieve real-time whole-body control of humanoid robots.
-
-
-
-## News
-
-- **[2026-06-09]** We release real G1 teleoperation, training, and deployment code [here](examples/Real_G1/README.md).
-- **[2026-04-15]** Initial release of DiT4DiT with training, evaluation, and deployment code.
-- **[2026-03-11]** We release the [arXiv paper](https://arxiv.org/abs/2603.10448).
-
-
-### Whole-Body Control (all 1x speed & autonomous)
-
-<div align="center">
-<table>
-<tr>
-<td align="center" colspan="2"><b>Shelf Organization</b></td>
-</tr>
-<tr>
-<td align="center" colspan="2"><img src="media/shelf_organization.webp" width="800"></td>
-</tr>
-<tr>
-<td align="center" colspan="2"><b>Relocate Chair</b></td>
-</tr>
-<tr>
-<td align="center" colspan="2"><img src="media/relocate_chair.webp" width="800"></td>
-</tr>
-<tr>
-<td align="center" colspan="2"><b>Assembly Line Work</b></td>
-</tr>
-<tr>
-<td align="center" colspan="2"><img src="media/assembly_line.webp" width="800"></td>
-</tr>
-</table>
-</div>
-
-### Tabletop Manipulation (all 1x speed, 1 policy for all tasks)
-
-<div align="center">
-<table>
-<tr>
-<td align="center"><b>Stack Cups</b></td>
-<td align="center"><b>Drawer Interaction</b></td>
-</tr>
-<tr>
-<td align="center"><img src="media/cups.gif" width="400"></td>
-<td align="center"><img src="media/drawer.gif" width="400"></td>
-</tr>
-<tr>
-<td align="center"><b>Pick and Place</b></td>
-<td align="center"><b>Arrange Flower</b></td>
-</tr>
-<tr>
-<td align="center"><img src="media/eggplant.gif" width="400"></td>
-<td align="center"><img src="media/flower.gif" width="400"></td>
-</tr>
-<tr>
-<td align="center"><b>Move Spoon</b></td>
-<td align="center"><b>Insert Plate</b></td>
-</tr>
-<tr>
-<td align="center"><img src="media/spoon.gif" width="400"></td>
-<td align="center"><img src="media/plate.gif" width="400"></td>
-</tr>
-<tr>
-<td align="center"><b>Box Packing</b></td>
-<td align="center"><b>Twist Cap</b></td>
-</tr>
-<tr>
-<td align="center"><img src="media/packing.gif" width="400"></td>
-<td align="center"><img src="media/twist_cap.gif" width="400"></td>
-</tr>
-</table>
-</div>
-
-
-## Table of Contents
-
-- [News](#news)
-- [TODOs](#todos)
-- [Project Structure](#project-structure)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-  - [Simulation](#simulation)
-  - [Real Robot](#real-robot)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
-
-
-
-## TODOs
-
-- [x] ~~Release teleoperation, training and deployment code for Unitree G1 tabletop tasks.~~
-- [x] ~~Release teleoperation, training and deployment code for Unitree G1 whole-body control tasks.~~
-
-## Project Structure
-
-```
-DiT4DiT/
-├── DiT4DiT/                    # Core package
-│   ├── config/                 # Configurations
-│   │   ├── deepseeds/          # DeepSpeed configs
-│   │   ├── robocasa/           # RoboCasa experiment configs
-│   │   └── real_robot/         # Real robot configs
-│   ├── dataloader/             # Dataset loading (LeRobot)
-│   ├── model/                  # Model architecture
-│   │   ├── framework/          # DiT4DiT framework
-│   │   └── modules/            # Backbone & action model
-│   └── training/               # Training scripts & utilities
-├── deployment/                 # WebSocket-based model server
-├── docs/                       # Documentation
-├── examples/
-│   ├── Robocasa_tabletop/      # RoboCasa simulation example
-│   │   ├── train_files/        # Training scripts
-│   │   └── eval_files/         # Evaluation & simulation
-│   └── Real_G1/                # Real Unitree G1 example
-│       ├── train_files/        # Training scripts
-│       └── eval_files/         # Evaluation
-└── requirements.txt
-```
-
-## Installation
-
-### Prerequisites
-
-- Python >= 3.10
-- CUDA 12.4+
-- \>8x GPUs recommended for training
-
-### Setup
+建议 Python 3.10，先创建隔离环境，再安装。当前验证环境为 torch 2.7.0+cu128 / torchvision 0.22.0+cu128。目标机器驱动需支持所选 CUDA wheel。
 
 ```bash
-# Clone the repository
-git clone https://github.com/Mondo-Robotics/DiT4DiT.git
-cd DiT4DiT
-
-# Create conda environment
 conda create -n dit4dit python=3.10 -y
 conda activate dit4dit
-
-# Install PyTorch (CUDA 12.8 recommended)
-pip install torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0 --index-url https://download.pytorch.org/whl/cu128
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install the package
-pip install -e .
+bash tools/install.sh
+bash tools/test_cpu.sh
 ```
 
-### Download Pretrained Backbone
+`tools/install.sh` 固定 Cosmos 所需的 diffusers revision 和 Qwen3 支持版本。需要编译器构建 PyTorch3D 的 Python 包，但本实验仅使用 transforms，不需要它的 CUDA 扩展。训练无需安装 RoboCasa 仿真器；闭环评估使用另一个 Python 环境。
 
-Download the Cosmos-Predict2.5-2B model from Hugging Face:
+## 2. 必须单独迁移的权重和数据
+
+Git 保存代码、固定的数据划分和归一化统计，**不包含大模型权重、视频/轨迹数据和仿真资产**。请从原服务器复制以下完整目录，复制符号链接时保留其实际内容（例如 `rsync -aL`）。具体原始路径见 [TRANSFER.md](TRANSFER.md)。
+
+```text
+/models/
+├── dit4dit_robocasa_gr1/
+│   ├── config.yaml
+│   ├── dataset_statistics.json
+│   └── final_model/pytorch_model.pt
+├── Cosmos-Predict2.5-2B-from-GR1/
+│   ├── model_index.json
+│   ├── transformer/     # config + safetensors
+│   ├── vae/             # config + safetensors
+│   ├── text_encoder/    # config + safetensors
+│   ├── tokenizer/
+│   └── scheduler/
+└── Qwen3-VL-4B-Instruct/ # 全部配置、processor/tokenizer 和全部权重分片
+/data/atomic/
+├── CloseBlenderLid/20250822/  # meta/, data/, videos/, extras/
+└── ...                      # 共 18 个任务，保持相对层级
+```
+
+`--cosmos-model` 覆盖 GR1 config 内旧服务器的 `base_model` 路径，无需手改 checkpoint 配置。
+**不能只复制 GR1 的 .pt 文件**：构建模型仍需要 config、统计以及 Cosmos pipeline 的配置/tokenizer/组件文件。
+
+固定数据划分：8216 个训练 episode、910 个验证 episode，seed 20260924。运行以下命令校验全部 parquet SHA256、视频存在性，并只替换数据根路径：
 
 ```bash
-huggingface-cli download nvidia/Cosmos-Predict2.5-2B --revision diffusers/base/post-trained --local-dir /path/to/Cosmos-Predict2.5-2B
+python tools/prepare_data.py --data-root /data/atomic --output prepared/atomic18
+export ROBOCASA_MANIFEST="$PWD/prepared/atomic18/manifest.json"
+export GR1_CHECKPOINT=/models/dit4dit_robocasa_gr1/final_model/pytorch_model.pt
+export COSMOS_MODEL_DIR=/models/Cosmos-Predict2.5-2B-from-GR1
+export QWEN_MODEL_DIR=/models/Qwen3-VL-4B-Instruct
+bash tools/test_cpu.sh  # 设置了以上变量后也运行真实数据/head 初始化检查
 ```
 
-## Model Zoo
+## 3. 启动两套实验
 
-We release pretrained checkpoints to facilitate reproduction.
+每组需要四张 GPU；八卡机器可同时跑，两组使用不同的 GPU 和输出目录。原实验以 A800 80GB 为目标，但 **224/repeat-4 的实际显存与速度仍需在目标机器测量**。默认 microbatch=1、accumulation=32；支持 1/2/4/8/16/32，global batch 始终为 128。
 
-### Available Checkpoints
+下面 `TOTAL_STEPS=20000` 只是命令示例，不是已经确定的实验预算。先按目标机器速度确定预算；两组使用相同预算。开始 smoke 时就传入最终计划步数，续训不能改变步数、microbatch 或其他 schedule 参数。
 
-| Model | Description | Dataset | Success Rate | Link |
-| --- | --- | --- | --- | --- |
-| **DiT4DiT-LIBERO** | DiT4DiT for LIBERO benchmark | LIBERO | 98.6 | [🤗 Hugging Face](https://huggingface.co/mondo-robotics/dit4dit-model/tree/main/dit4dit_libero) |
-| **DiT4DiT-RoboCasa-GR1** | DiT4DiT for RoboCasa-GR1 tabletop tasks | RoboCasa-GR1 | 56.7 | [🤗 Hugging Face](https://huggingface.co/mondo-robotics/dit4dit-model/tree/main/dit4dit_robocasa_gr1) |
+```bash
+TOTAL_STEPS=20000
 
-> **Note:** More checkpoints will be released soon. Stay tuned!
+python experiments/robocasa_official_recipe/train.py \
+  --manifest "$ROBOCASA_MANIFEST" --checkpoint "$GR1_CHECKPOINT" \
+  --cosmos-model "$COSMOS_MODEL_DIR" --output outputs/baseline \
+  --steps "$TOTAL_STEPS" --gpus 0,1,2,3 --microbatch 1 --stop-after 2
 
-## Quick Start
-
-### Simulation
-
-- **LIBERO**: See the full training and evaluation guide [here](docs/libero.md).
-- **RoboCasa-GR1 Tabletop**: See the full training and evaluation guide [here](docs/robocasa_tabletop.md).
-
-### Real Robot
-
-- **Unitree G1 (Decoupled WholeBodyControl)**: For real-robot data collection, replay, and closed-loop deployment on a Unitree G1, see the full guide [here](examples/Real_G1/README.md).
-
-## Results
-
-### LIBERO Benchmark
-
-| Task Suite | Success Rate |
-|------------|-------------|
-| LIBERO-Spatial | 98.6 |
-| LIBERO-Object | 100.0 |
-| LIBERO-Goal | 99.2 |
-| LIBERO-10 | 96.6 |
-| **Average** | **98.6** |
-
-### Robocasa-GR1 Benchmark
-
-The following results are obtained using the default training parameters described in [Configure Training](#configure-training). We report five independent evaluation runs of the same checkpoint to demonstrate reproducibility. The model consistently achieves an average success rate above 56% across all runs.
-
-| Task | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 |
-|------|-------|-------|-------|-------|-------|
-| BottleToCabinetClose | 50.0 | 72.0 | 68.0 | 64.0 | 70.0 |
-| CanToDrawerClose | 80.0 | 80.0 | 82.0 | 76.0 | 70.0 |
-| CupToDrawerClose | 50.0 | 34.0 | 50.0 | 44.0 | 60.0 |
-| MilkToMicrowaveClose | 58.0 | 60.0 | 38.0 | 68.0 | 60.0 |
-| PotatoToMicrowaveClose | 40.0 | 40.0 | 36.0 | 38.0 | 48.0 |
-| WineToCabinetClose | 60.0 | 48.0 | 60.0 | 54.0 | 68.0 |
-| FromCuttingboardToBasket | 54.0 | 48.0 | 46.0 | 64.0 | 54.0 |
-| FromCuttingboardToCardboardbox | 50.0 | 60.0 | 48.0 | 58.0 | 52.0 |
-| FromCuttingboardToPan | 80.0 | 74.0 | 78.0 | 72.0 | 72.0 |
-| FromCuttingboardToPot | 52.0 | 46.0 | 66.0 | 64.0 | 54.0 |
-| FromCuttingboardToTieredbasket | 44.0 | 54.0 | 50.0 | 50.0 | 46.0 |
-| FromPlacematToBasket | 58.0 | 40.0 | 44.0 | 54.0 | 54.0 |
-| FromPlacematToBowl | 64.0 | 66.0 | 72.0 | 60.0 | 56.0 |
-| FromPlacematToPlate | 66.0 | 62.0 | 64.0 | 54.0 | 58.0 |
-| FromPlacematToTieredshelf | 44.0 | 48.0 | 40.0 | 32.0 | 44.0 |
-| FromPlateToBowl | 64.0 | 74.0 | 54.0 | 72.0 | 52.0 |
-| FromPlateToCardboardbox | 50.0 | 54.0 | 52.0 | 56.0 | 52.0 |
-| FromPlateToPan | 58.0 | 68.0 | 70.0 | 68.0 | 56.0 |
-| FromPlateToPlate | 62.0 | 64.0 | 72.0 | 76.0 | 74.0 |
-| FromTrayToCardboardbox | 52.0 | 50.0 | 60.0 | 58.0 | 58.0 |
-| FromTrayToPlate | 64.0 | 64.0 | 58.0 | 60.0 | 50.0 |
-| FromTrayToPot | 68.0 | 70.0 | 66.0 | 64.0 | 74.0 |
-| FromTrayToTieredbasket | 50.0 | 46.0 | 50.0 | 42.0 | 50.0 |
-| FromTrayToTieredshelf | 42.0 | 36.0 | 28.0 | 30.0 | 44.0 |
-| **Average** | **56.7** | **56.6** | **56.3** | **57.4** | **57.3** |
-
-### LIBERO Benchmark
-
-
-## Citation
-
-If you find this work useful, please consider citing:
-
-```bibtex
-@article{ma2026dit4dit,
-  title={DiT4DiT: Jointly Modeling Video Dynamics and Actions for Generalizable Robot Control},
-  author={Ma, Teli and Zheng, Jia and Wang, Zifan and Jiang, Chunli and Cui, Andy and Liang, Junwei and Yang, Shuo},
-  journal={arXiv preprint arXiv:2603.10448},
-  year={2026}
-}
+python experiments/concat_random_head/train.py \
+  --manifest "$ROBOCASA_MANIFEST" --checkpoint "$GR1_CHECKPOINT" \
+  --cosmos-model "$COSMOS_MODEL_DIR" --qwen-model "$QWEN_MODEL_DIR" \
+  --output outputs/concat --steps "$TOTAL_STEPS" --gpus 4,5,6,7 \
+  --microbatch 1 --stop-after 2
 ```
 
-## License
+`--stop-after 2` 执行真实完整 forward/backward、优化器、DDP 和保存。HF 调度第 1 步 LR=0，第 2 步才发生非零更新；所以只跑一步不足以验证更新。初始 validation 会先遍历验证窗口，可能需要较长时间。
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+确认 `metrics.jsonl` 中 loss/gradient 有限，`distributed_preflight.json` 中设备正确，再使用原命令 **加 `--resume`，把 `--stop-after 2` 改为 `--stop-after 100`**。100 步后检查速度、显存和 `rank_weights_step_000100.json`；最后移除 `--stop-after`，保留 `--resume` 完成训练。每组的训练器会检查梯度、checkpoint 读回和各 rank 权重一致性。
 
-## Acknowledgements
+- `action_latest.pt`：完整 optimizer/scheduler/RNG 恢复文件。
+- `action_step_*.pt`：策略快照，不能用于恢复优化器。
+- `--dry-run`：校验路径并打印启动命令，不启动训练。
+- 启动器使用输出目录锁，并在恢复前修整未提交日志。
+- 迁移后启动的新实验可以正常恢复；历史 checkpoint 内含旧的绝对路径，不能直接当作新服务器的精确续训文件。
 
-This project builds upon:
-- [StarVLA](https://github.com/starVLA/starVLA)
-- [Cosmos-Predict2.5](https://github.com/NVIDIA/Cosmos) by NVIDIA
-- [GR00T](https://github.com/NVIDIA/Isaac-GR00T) by NVIDIA
-- [Robocasa](https://github.com/robocasa/robocasa)
-- [LeRobot](https://github.com/huggingface/lerobot) by Hugging Face
-- [GR00T-WholeBodyControl](https://github.com/NVlabs/GR00T-WholeBodyControl) by NVIDIA
+可先进行四 rank 的 CPU 导入/通信检查（不读取模型和数据）：
 
+```bash
+python experiments/robocasa_official_recipe/train.py \
+  --manifest /tmp/unused.json --checkpoint /tmp/unused.pt --cosmos-model /tmp/unused \
+  --output outputs/cpu_preflight --steps 20000 --cpu-runtime-preflight
+```
 
+## 4. 闭环评估
+
+另建 Python 3.11 仿真环境，安装 RoboCasa365 及对应资产，版本见 [TRANSFER.md](TRANSFER.md)。训练环境的 Python 驱动模型，`--sim-python` 指向仿真环境 Python。需要 EGL/OpenGL 驱动；不要复制旧服务器的硬编码系统动态库路径。
+
+训练完成后，在训练环境执行（concat 对应替换 experiment 和 checkpoint）：
+
+```bash
+python tools/evaluate.py --experiment robocasa_official_recipe \
+  --checkpoint outputs/baseline/action_step_020000.pt \
+  --manifest "$ROBOCASA_MANIFEST" --cosmos-model "$COSMOS_MODEL_DIR" \
+  --sim-python /path/to/simulator/.venv/bin/python \
+  --output outputs/baseline_dev_final --gpu 0
+```
+
+默认每任务 seeds 100–109，共 18×10 次开发评估，执行 horizon=8。只有最终余弦降到底的快照用于正式比较；5k 快照只作诊断。开发 seeds 不等于 manifest 中 1000–1099 的保留最终测试 seeds。
+
+## 5. 已验证范围
+
+详见 [VALIDATION.md](VALIDATION.md)。CPU 逻辑、真实数据、真实 GR1 head 初始化、两组真实模型动作路径前向/反向、实际四进程入口及仿真动作协议已验证。**未在目标服务器执行完整模型 GPU 训练、显存验收或闭环成功率评估，也未在全新环境实际重装全部依赖。** 请按上面的 2 步 → 100 步流程验收后长跑，不能把 CPU 通过等同于 GPU 全链路通过。
+
+上游 DiT4DiT 使用 MIT License，保留 `LICENSE` 和源码版权声明。迁移修改及原始源码摘要见 [PORTABILITY.md](PORTABILITY.md) 和 `UPSTREAM_SOURCE_HASHES.json`。
+
+## 可选：真实模型 CPU 动作路径检查
+
+当前机器无空闲 GPU 时，可加载真实 GR1 + Qwen，对两套模型各做一次动作路径 forward/backward：
+
+```bash
+CUDA_VISIBLE_DEVICES= NO_ALBUMENTATIONS_UPDATE=1 python tools/check_model_cpu.py \
+  --manifest "$ROBOCASA_MANIFEST" --checkpoint "$GR1_CHECKPOINT" \
+  --cosmos-model "$COSMOS_MODEL_DIR" --qwen-model "$QWEN_MODEL_DIR" \
+  --output outputs/cpu_model_check.json
+```
+
+需要数十 GB 内存和数分钟计算；测试使用当前帧、repeat=4，不训练视频分支，不执行 optimizer。它验证严格 GR1 加载、真实图像/指令到动作 loss、head/projector 的有限梯度及冻结分支隔离，不能替代 GPU smoke。

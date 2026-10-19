@@ -1,0 +1,29 @@
+{
+  "status": "complete",
+  "backend": "gloo",
+  "world_size": 4,
+  "ranks": [
+    {
+      "rank": 0,
+      "local_rank": 0,
+      "reused_import_initialized_group": true
+    },
+    {
+      "rank": 1,
+      "local_rank": 1,
+      "reused_import_initialized_group": true
+    },
+    {
+      "rank": 2,
+      "local_rank": 2,
+      "reused_import_initialized_group": true
+    },
+    {
+      "rank": 3,
+      "local_rank": 3,
+      "reused_import_initialized_group": true
+    }
+  ],
+  "collective_sum": 10,
+  "scope": "Actual trainer torchrun import and idempotent process-group initialization; no model training"
+}

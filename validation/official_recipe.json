@@ -1,0 +1,23 @@
+{
+ "passed": true,
+ "schedule_max_abs_factor_diff": 1.1102230246251565e-16,
+ "final_factor": 0.016666666666666666,
+ "task": "CloseBlenderLid",
+ "frames": 9,
+ "frame_shapes": [
+  [
+   3,
+   224,
+   672
+  ]
+ ],
+ "action": [
+  16,
+  32
+ ],
+ "state": [
+  1,
+  64
+ ],
+ "action_mask_true_dims": 12
+}

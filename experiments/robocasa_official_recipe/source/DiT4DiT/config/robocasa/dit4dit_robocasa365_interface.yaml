@@ -1,0 +1,20 @@
+# Interface verification only. No optimizer or training invocation.
+# Model architecture/weights come from the released GR1 checkpoint (32 action / 64 state).
+datasets:
+  vla_data:
+    dataset_py: robocasa365_datasets
+    dataset_path: results/robocasa365_interface/datasets/v1.0/target/composite/StirVegetables/20250814
+    task: StirVegetables
+    task_set: composite_seen
+    split: target
+    robot_config: robocasa365_pandaomron
+    action_horizon: 16
+    max_state_dim: 64
+    max_action_dim: 32
+    image_size: [128, 128]
+    video_delta_indices: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    action_video_freq_ratio: 2
+    video_backend: decord
+    lerobot_version: v2.0
+    per_device_batch_size: 2
+    num_workers: 0
