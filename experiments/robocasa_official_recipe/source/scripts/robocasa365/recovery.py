@@ -14,13 +14,13 @@ def committed_step(output):
     saved=torch.load(path,map_location='cpu',weights_only=False,mmap=True)
     required={'optimizer','scheduler','distributed_rng','trained_state','training_schedule','global_step'}
     if not required.issubset(saved):raise ValueError('Not a full resumable checkpoint')
-    if len(saved['distributed_rng'])!=4:raise ValueError('Expected four saved rank RNG states')
+    if not saved['distributed_rng']:raise ValueError('Saved rank RNG states are missing')
     return int(saved['global_step'])
 
 
 def prepare_attempt(output, token):
     output=Path(output);step=committed_step(output)
-    if not 0<=step<=5000:raise ValueError(f'Unexpected checkpoint step {step}')
+    if step<0:raise ValueError(f'Unexpected checkpoint step {step}')
     metrics=output/'metrics.jsonl';rows=[]
     if metrics.exists():
         lines=metrics.read_text().splitlines()

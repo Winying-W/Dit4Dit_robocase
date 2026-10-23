@@ -33,9 +33,19 @@ class PortableTest(unittest.TestCase):
 
     def test_reject_changed_recipe(self):
         name='robocasa_official_recipe'
-        for extra in [['--microbatch','3'],['--gpus','0,1'],['--gpus','0,0,1,2'],['--steps','0'],['--stop-after','3000'],['--qwen-model','/qwen']]:
+        for extra in [['--microbatch','3'],['--gpus','0,0,1,2'],['--gpus','0,'],['--steps','0'],['--stop-after','3000'],['--qwen-model','/qwen']]:
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 build_command(self.args(name,extra),name)
+
+    def test_global_batch_scales_with_ranks(self):
+        name='concat_random_head'
+        for gpus, expected in [('0,1,2,3','32'), (','.join(map(str,range(8))),'16'), (','.join(map(str,range(16))),'8')]:
+            cmd=build_command(self.args(name,['--qwen-model','/models/qwen','--gpus',gpus]),name)
+            world=len(gpus.split(','))
+            self.assertIn(f'--nproc-per-node={world}',cmd)
+            accumulation=int(cmd[cmd.index('--accumulation')+1])
+            self.assertEqual(accumulation,int(expected))
+            self.assertEqual(accumulation*world,128)
 
     def test_sealed_split(self):
         p=ROOT/'data/atomic18'

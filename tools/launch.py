@@ -1,4 +1,10 @@
-"""Portable single-node launcher. Keeps the declared four-rank/global-128 recipe."""
+"""Portable single-node launcher. Keeps the declared global-batch-128 recipe.
+
+The original recipe is 4 ranks x microbatch 1 x accumulation 32 = global 128.
+For any other single-node rank count the accumulation is rescaled
+(``128 / (microbatch * world_size)``) so the batch size, learning-rate schedule
+and data order stay equivalent to the 4-rank configuration.
+"""
 import argparse
 import fcntl
 import hashlib
@@ -11,6 +17,7 @@ import sys
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+GLOBAL_BATCH = 128
 
 
 def parser(experiment):
@@ -21,8 +28,10 @@ def parser(experiment):
     p.add_argument('--qwen-model', type=Path, required=experiment == 'concat_random_head')
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--steps', type=int, required=True, help='Final schedule length, unchanged when resuming')
-    p.add_argument('--microbatch', type=int, default=1, help='Must divide 32; accumulation is 32/microbatch')
-    p.add_argument('--gpus', default='0,1,2,3', help='Four CUDA device IDs or UUIDs visible to this process')
+    p.add_argument('--global-batch', type=int, default=GLOBAL_BATCH, help='Global batch to keep across any rank count')
+    p.add_argument('--nodes', type=int, default=1, help='DLC nodes; 1 = --standalone, >1 = DLC RANK/WORLD_SIZE/MASTER_ADDR/MASTER_PORT')
+    p.add_argument('--microbatch', type=int, default=1, help='Must divide the 128 global batch together with the rank count')
+    p.add_argument('--gpus', default='0,1,2,3', help='CUDA/PPU device IDs visible to this process; one rank per device')
     p.add_argument('--stop-after', type=int, help='Stop at this global step, retaining the full --steps schedule')
     p.add_argument('--resume', action='store_true', help='Resume output/action_latest.pt including optimizer/RNG')
     p.add_argument('--checkpoint-interval', type=int, default=1000)
@@ -35,11 +44,27 @@ def parser(experiment):
 def build_command(a, experiment):
     if a.steps < 2:
         raise ValueError('--steps must be >= 2')
-    if a.microbatch < 1 or 32 % a.microbatch:
-        raise ValueError('--microbatch must be a positive divisor of 32')
+    if a.microbatch < 1:
+        raise ValueError('--microbatch must be a positive integer')
     devices = a.gpus.split(',')
-    if len(devices) != 4 or len(set(devices)) != 4 or any(not x.strip() for x in devices):
-        raise ValueError('--gpus must specify exactly four distinct devices')
+    if not devices or len(set(devices)) != len(devices) or any(not x.strip() for x in devices):
+        raise ValueError('--gpus must specify distinct device ids')
+    nodes = max(1, a.nodes)
+    world_size = len(devices) * nodes
+    if a.global_batch % (a.microbatch * world_size):
+        raise ValueError(f'--microbatch {a.microbatch} with {world_size} ranks cannot keep global batch {a.global_batch}')
+    accumulation = a.global_batch // (a.microbatch * world_size)
+    if nodes > 1:
+        for key in ('RANK', 'MASTER_ADDR', 'MASTER_PORT'):
+            if not os.environ.get(key):
+                raise ValueError(f'multi-node launch requires the DLC environment variable {key}')
+        if int(os.environ.get('WORLD_SIZE', nodes)) != nodes:
+            raise ValueError('DLC node count does not match --nodes')
+        torchrun = ['--nnodes', str(nodes), '--node-rank', os.environ['RANK'],
+                    '--master-addr', os.environ['MASTER_ADDR'], '--master-port', os.environ['MASTER_PORT'],
+                    '--max-restarts', '0']
+    else:
+        torchrun = ['--standalone', '--nnodes', '1']
     if a.stop_after is not None and not 1 <= a.stop_after <= a.steps:
         raise ValueError('--stop-after must be between 1 and --steps')
     if min(a.checkpoint_interval, a.validation_interval) < 1:
@@ -49,10 +74,11 @@ def build_command(a, experiment):
     if experiment == 'concat_random_head' and not a.qwen_model:
         raise ValueError('Concat requires --qwen-model')
     snapshots = sorted({min(100, a.steps), a.steps, *range(5000, a.steps + 1, 5000)})
-    cmd = [sys.executable, '-m', 'torch.distributed.run', '--standalone', '--nnodes=1', '--nproc-per-node=4',
+    cmd = [sys.executable, '-m', 'torch.distributed.run', *torchrun, f'--nproc-per-node={len(devices)}',
            '-m', 'scripts.robocasa365.train_distributed', '--manifest', str(a.manifest.resolve()),
            '--checkpoint', str(a.checkpoint.resolve()), '--output', str(a.output.resolve()),
-           '--steps', str(a.steps), '--microbatch', str(a.microbatch), '--accumulation', str(32 // a.microbatch),
+           '--steps', str(a.steps), '--microbatch', str(a.microbatch), '--accumulation', str(accumulation),
+           '--global-batch', str(a.global_batch),
            '--warmup-steps', str(max(1, round(a.steps * .025))), '--seed', '42',
            '--checkpoint-interval', str(a.checkpoint_interval), '--validation-interval', str(a.validation_interval),
            '--action-head-init', 'random' if experiment == 'concat_random_head' else 'gr1',
@@ -120,7 +146,9 @@ def main(experiment):
         validate_assets(a)
     source = ROOT/'experiments'/experiment/'source'
     env = os.environ.copy()
-    env.update(PYTHONPATH=str(source), COSMOS_MODEL_DIR=str(a.cosmos_model.resolve()),
+    extra_pythonpath = os.environ.get('VLA_WAM_EXTRA_PYTHONPATH', '')
+    pythonpath = os.pathsep.join(part for part in (str(source), extra_pythonpath) if part)
+    env.update(PYTHONPATH=pythonpath, COSMOS_MODEL_DIR=str(a.cosmos_model.resolve()),
                NO_ALBUMENTATIONS_UPDATE='1', TOKENIZERS_PARALLELISM='false',
                OMP_NUM_THREADS=env.get('OMP_NUM_THREADS', '1'),
                CUDA_VISIBLE_DEVICES='' if a.cpu_runtime_preflight else a.gpus)
@@ -128,8 +156,12 @@ def main(experiment):
     if a.dry_run:
         return
     if not a.cpu_runtime_preflight:
-        # Check GPU visibility before allocating any model weights or spawning ranks.
-        subprocess.run([sys.executable, '-c', 'import torch; assert torch.cuda.device_count()==4, "Exactly four visible CUDA GPUs required"; print([(i,torch.cuda.get_device_name(i),torch.cuda.get_device_properties(i).total_memory) for i in range(4)])'], env=env, check=True)
+        # Check device visibility before allocating any model weights or spawning ranks.
+        world_size = len(a.gpus.split(','))
+        probe = ('import torch; n=torch.cuda.device_count(); '
+                 f'assert n=={world_size}, f"Expected {world_size} visible devices, got {{n}}"; '
+                 f'print([(i, torch.cuda.get_device_name(i), torch.cuda.get_device_properties(i).total_memory) for i in range({world_size})])')
+        subprocess.run([sys.executable, '-c', probe], env=env, check=True)
     a.output.mkdir(parents=True, exist_ok=True)
     with (a.output/'launcher.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
