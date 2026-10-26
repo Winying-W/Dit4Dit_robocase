@@ -138,6 +138,7 @@ def main():
                         if process.poll() is not None:raise RuntimeError('Simulator exited before connecting; see simulator.log')
                         if time.monotonic()>deadline:raise TimeoutError('Simulator connect timeout')
                     with listener.accept() as conn:
+                      try:
                         while True:
                             if not conn.poll(1):
                                 if process.poll() is not None:raise RuntimeError('Simulator exited without STOP; see simulator.log')
@@ -161,6 +162,13 @@ def main():
                             latencies.append(time.monotonic()-tick);queries+=1
                             if queries==1:np.savez_compressed(a.output/'first_live_query.npz',**data,normalized=normalized,decoded=decoded)
                             if queries%50==0:print('POLICY_QUERIES',queries,'mean_seconds',float(np.mean(latencies)),flush=True)
+                      except EOFError:
+                            try:process.wait(timeout=60)
+                            except Exception:pass
+                            try:dump=(a.output/'simulator.log').read_text()[-6000:]
+                            except Exception:dump='<no simulator.log>'
+                            print('SIMULATOR_LOG_DUMP_BEGIN\n'+dump+'\nSIMULATOR_LOG_DUMP_END',flush=True)
+                            raise
                     returncode=process.wait(timeout=120)
                     if returncode:raise RuntimeError(f'Simulator failed: {returncode}')
                 finally:

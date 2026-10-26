@@ -48,6 +48,7 @@ def main():
     parser.add_argument('--steps',type=int,default=50000)
     parser.add_argument('--microbatch',type=int,default=4)
     parser.add_argument('--accumulation',type=int,default=4)
+    parser.add_argument('--global-batch',type=int,default=128,help='Global batch this run declares')
     parser.add_argument('--warmup-steps',type=int,default=1000)
     parser.add_argument('--validation-interval',type=int,default=1000)
     parser.add_argument('--checkpoint-interval',type=int,default=1000)
@@ -65,8 +66,10 @@ def main():
     if min(args.steps,args.microbatch,args.accumulation,args.warmup_steps,args.validation_interval,args.checkpoint_interval)<1:
         raise ValueError('All step, batch and interval settings must be positive')
     rank=int(os.environ['RANK']);local=int(os.environ['LOCAL_RANK']);world=int(os.environ['WORLD_SIZE'])
-    if world != 4:
-        raise ValueError('This declared experiment requires exactly four distributed ranks')
+    global_batch = world * args.microbatch * args.accumulation
+    if global_batch != args.global_batch:
+        raise ValueError(f'Declared global batch {args.global_batch} != world {world} x microbatch'
+                         f' {args.microbatch} x accumulation {args.accumulation} = {global_batch}')
     if args.cpu_runtime_preflight:
         assert not torch.cuda.is_available(), 'CPU import preflight must hide CUDA devices'
         reused=ensure_process_group('gloo',rank,world)
@@ -250,6 +253,7 @@ def main():
             matrices=[name for name,p in params.items() if p.ndim>=2]
             before={name:params[name].detach().clone() for name in [matrices[0],matrices[-1]]}
         batches=[[example(dataset.sample_index(sampler)) for _ in range(args.microbatch)] for _ in range(args.accumulation)]
+        data_seconds=time.monotonic()-tick
         counts=[int(sum(np.asarray(ex['action_mask']).sum() for ex in batch)) for batch in batches]
         global_count=torch.tensor(sum(counts),dtype=torch.float64,device=device);dist.all_reduce(global_count)
         local_numerator=torch.zeros((),dtype=torch.float64,device=device)
@@ -293,6 +297,7 @@ def main():
             video_loss=float(video_numerator),gradient_norm=float(gradient_norm),seconds=float(timings[0]),peak_allocated_gib=float(timings[1]),
             learning_rates=[g['lr'] for g in optimizer.param_groups],world_size=world,
             global_batch_size=world*args.microbatch*args.accumulation,valid_action_elements=int(global_count.item()))
+        if os.environ.get('VLA_WAM_PROFILE'):metrics['data_seconds']=data_seconds
         if before:metrics['checked_parameter_update_max']=update_max
         if encoder_gradients is not None:metrics['encoder_decoder_gradient_norms']=encoder_gradients
         if step%args.validation_interval==0 or step==args.steps:metrics['validation_action_fm_loss']=evaluate()

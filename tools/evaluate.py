@@ -27,8 +27,9 @@ def main():
     for key in list(env):
         if key in {'RANK','LOCAL_RANK','WORLD_SIZE','LOCAL_WORLD_SIZE','GROUP_RANK','ROLE_RANK','ROLE_WORLD_SIZE','MASTER_ADDR','MASTER_PORT'} or key.startswith('TORCHELASTIC_'):
             env.pop(key,None)
-    env.update(PYTHONPATH=str(source),COSMOS_MODEL_DIR=str(a.cosmos_model.resolve()),CUDA_VISIBLE_DEVICES=a.gpu,
-               MUJOCO_GL='egl',PYOPENGL_PLATFORM='egl',MUJOCO_EGL_DEVICE_ID='0',NO_ALBUMENTATIONS_UPDATE='1')
+    extra=os.environ.get('VLA_WAM_EXTRA_PYTHONPATH','')
+    env.update(PYTHONPATH=os.pathsep.join(p for p in (str(source),extra) if p),COSMOS_MODEL_DIR=str(a.cosmos_model.resolve()),CUDA_VISIBLE_DEVICES=a.gpu,
+               MUJOCO_GL=os.environ.get('VLA_WAM_MUJOCO_GL','egl'),PYOPENGL_PLATFORM=os.environ.get('VLA_WAM_MUJOCO_GL','egl'),MUJOCO_EGL_DEVICE_ID='0',NO_ALBUMENTATIONS_UPDATE='1')
     for row in json.loads(a.manifest.read_text())['tasks']:
         target=a.output.resolve()/row['task']
         if target.exists():
